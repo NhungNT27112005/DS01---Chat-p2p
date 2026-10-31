@@ -1,0 +1,30 @@
+body {
+  margin: 0;
+  padding: 24px;
+  font-family: Arial, sans-serif;
+  color: #193a34;
+  background: #f2f7f5;
+}
+
+main {
+  max-width: 640px;
+  margin: 12vh auto;
+  padding: 32px;
+  background: white;
+  border: 1px solid #d8e5df;
+  border-radius: 12px;
+}
+
+h1 {
+  font-size: clamp(24px, 5vw, 36px);
+}
+
+p {
+  line-height: 1.6;
+}
+
+.label {
+  color: #176b5b;
+  font-size: 13px;
+  font-weight: bold;
+}
