@@ -39,11 +39,19 @@ io.on('connection', (socket) => {
       typeof displayName !== 'string'
     ) {
       console.log('[signaling] Dang ky that bai: ID va ten phai la chuoi');
+      socket.emit('peer:register:result', {
+        ok: false,
+        message: 'Peer ID và tên hiển thị phải là chuỗi.',
+      });
       return;
     }
 
     if (!peerId.trim() || !displayName.trim()) {
       console.log('[signaling] Dang ky that bai: ID va ten khong duoc trong');
+      socket.emit('peer:register:result', {
+        ok: false,
+        message: 'Peer ID và tên hiển thị không được để trống.',
+      });
       return;
     }
 
@@ -52,11 +60,19 @@ io.on('connection', (socket) => {
 
     if (socket.data.peerId) {
       console.log('[signaling] Dang ky that bai: ket noi nay da dang ky');
+      socket.emit('peer:register:result', {
+        ok: false,
+        message: 'Kết nối này đã đăng ký một peer.',
+      });
       return;
     }
 
     if (peers.has(normalizedPeerId)) {
       console.log('[signaling] Dang ky that bai: Peer ID da ton tai');
+      socket.emit('peer:register:result', {
+        ok: false,
+        message: 'Peer ID đang được sử dụng. Vui lòng chọn ID khác.',
+      });
       return;
     }
 
