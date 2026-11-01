@@ -26,6 +26,16 @@ const io = new Server(httpServer, {
 // 3.1. Tạo một Map để lưu trữ các peer đang kết nối.
 const peers = new Map();
 
+function getPeerList() {
+  const peerList = Array.from(peers.values());
+
+  return peerList.map((peer) => ({
+    peerId: peer.peerId,
+    displayName: peer.displayName,
+    status: peer.status,
+  }));
+}
+
 // 4. Tạm thời chỉ ghi log khi một client kết nối tới Socket.IO.
 io.on('connection', (socket) => {
   console.log('[signaling] Client ket noi:', socket.id);
