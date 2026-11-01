@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { signalingSocket } from './services/signaling.js';
+import { signalingSocket, registerPeer } from './services/signaling.js';
 
 export default function App() {
   const [connectionStatus, setConnectionStatus] =
@@ -35,6 +35,14 @@ export default function App() {
     };
   }, []);
 
+  function handleRegister() {
+    if (!signalingSocket.connected) {
+      return;
+    }
+
+    registerPeer(peerId, displayName);
+  }
+
   return (
     <main>
       <p className="label">DS01 · GIAI ĐOẠN 1</p>
@@ -63,6 +71,17 @@ export default function App() {
           />
         </label>
       </p>
+      <button
+        type="button"
+        onClick={handleRegister}
+        disabled={
+          !signalingSocket.connected ||
+          !peerId.trim() ||
+          !displayName.trim()
+        }
+      >
+        Tham gia mạng
+      </button>
       <p>Khung dự án đã sẵn sàng để học và xây dựng từng phần.</p>
     </main>
   );
