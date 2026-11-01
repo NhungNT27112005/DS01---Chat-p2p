@@ -8,6 +8,7 @@ export default function App() {
   const [displayName, setDisplayName] = useState('');
   const [registrationStatus, setRegistrationStatus] = useState('');
   const [onlinePeers, setOnlinePeers] = useState([]);
+  const [currentPeer, setCurrentPeer] = useState(null);
 
   useEffect(() => {
     function handleConnect() {
@@ -19,6 +20,7 @@ export default function App() {
       setConnectionStatus('Mất kết nối signaling');
       setRegistrationStatus('');
       setOnlinePeers([]);
+      setCurrentPeer(null);
     }
 
     function handleConnectError(error) {
@@ -27,6 +29,10 @@ export default function App() {
 
     function handleRegisterResult(result) {
       setRegistrationStatus(result.message);
+
+      if (result.ok) {
+        setCurrentPeer(result.peer);
+      }
     }
 
     function handlePeerList(peerList) {
@@ -66,6 +72,11 @@ export default function App() {
       <h1>Chat P2P bằng JavaScript</h1>
       <p>Trạng thái: {connectionStatus}</p>
       {registrationStatus && <p>{registrationStatus}</p>}
+      {currentPeer && (
+        <p>
+          Bạn: {currentPeer.displayName} ({currentPeer.peerId})
+        </p>
+      )}
       <p>
         <label>
           Peer ID:
