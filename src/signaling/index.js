@@ -39,6 +39,7 @@ function getPeerList() {
 // 4. Tạm thời chỉ ghi log khi một client kết nối tới Socket.IO.
 io.on('connection', (socket) => {
   console.log('[signaling] Client ket noi:', socket.id);
+  socket.emit('peers:list', getPeerList());
 
   socket.on('peer:register', (data) => {
     const peerId = data?.peerId;
@@ -105,6 +106,7 @@ io.on('connection', (socket) => {
         status: peer.status,
       },
     });
+    io.emit('peers:list', getPeerList());
 
     console.log('[signaling] Dang ky peer thanh cong:', peer);
   });
@@ -120,6 +122,7 @@ io.on('connection', (socket) => {
 
     if (peer?.socketId === socket.id) {
       peers.delete(peerId);
+      io.emit('peers:list', getPeerList());
 
       console.log('[signaling] Peer ngat ket noi:', peerId, reason);
     }
