@@ -70,6 +70,16 @@ io.on('connection', (socket) => {
     peers.set(normalizedPeerId, peer);
     socket.data.peerId = normalizedPeerId;
 
+    socket.emit('peer:register:result', {
+      ok: true,
+      message: 'Tham gia mạng thành công.',
+      peer: {
+        peerId: peer.peerId,
+        displayName: peer.displayName,
+        status: peer.status,
+      },
+    });
+
     console.log('[signaling] Dang ky peer thanh cong:', peer);
   });
 
