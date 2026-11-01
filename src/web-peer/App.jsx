@@ -7,6 +7,7 @@ export default function App() {
   const [peerId, setPeerId] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [registrationStatus, setRegistrationStatus] = useState('');
+  const [onlinePeers, setOnlinePeers] = useState([]);
 
   useEffect(() => {
     function handleConnect() {
@@ -17,6 +18,7 @@ export default function App() {
     function handleDisconnect() {
       setConnectionStatus('Mất kết nối signaling');
       setRegistrationStatus('');
+      setOnlinePeers([]);
     }
 
     function handleConnectError(error) {
@@ -27,10 +29,15 @@ export default function App() {
       setRegistrationStatus(result.message);
     }
 
+    function handlePeerList(peerList) {
+      setOnlinePeers(peerList);
+    }
+
     signalingSocket.on('connect', handleConnect);
     signalingSocket.on('disconnect', handleDisconnect);
     signalingSocket.on('connect_error', handleConnectError);
     signalingSocket.on('peer:register:result', handleRegisterResult);
+    signalingSocket.on('peers:list', handlePeerList);
 
     signalingSocket.connect();
 
@@ -39,6 +46,7 @@ export default function App() {
       signalingSocket.off('disconnect', handleDisconnect);
       signalingSocket.off('connect_error', handleConnectError);
       signalingSocket.off('peer:register:result', handleRegisterResult);
+      signalingSocket.off('peers:list', handlePeerList);
 
       signalingSocket.disconnect();
     };
@@ -92,6 +100,20 @@ export default function App() {
       >
         Tham gia mạng
       </button>
+
+      <h2>Peer đang online ({onlinePeers.length})</h2>
+
+      {onlinePeers.length === 0 && (
+        <p>Chưa có peer nào trong danh sách.</p>
+      )}
+
+      <ul>
+        {onlinePeers.map((peer) => (
+          <li key={peer.peerId}>
+            {peer.displayName} ({peer.peerId}) — {peer.status}
+          </li>
+        ))}
+      </ul>
       <p>Khung dự án đã sẵn sàng để học và xây dựng từng phần.</p>
     </main>
   );
