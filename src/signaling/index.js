@@ -15,7 +15,14 @@ app.get('/health', (req, res) => {
 
 // 3. Express và Socket.IO cùng sử dụng một HTTP server.
 const httpServer = createServer(app);
-const io = new Server(httpServer);
+const io = new Server(httpServer, {
+  cors: {
+    origin: [
+      'http://localhost:5173',
+      'http://127.0.0.1:5173',
+    ],
+  },
+});
 
 // 4. Tạm thời chỉ ghi log khi một client kết nối tới Socket.IO.
 io.on('connection', (socket) => {
