@@ -22,6 +22,9 @@ const io = new Server(httpServer, {
       'http://127.0.0.1:5173',
     ],
   },
+
+  pingInterval: 5000,
+  pingTimeout: 10000,
 });
 // 3.1. Tạo một Map để lưu trữ các peer đang kết nối.
 const peers = new Map();
