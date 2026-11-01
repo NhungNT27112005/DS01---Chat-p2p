@@ -47,10 +47,30 @@ io.on('connection', (socket) => {
       return;
     }
 
-    console.log('[signaling] Yeu cau dang ky hop le:', {
-      peerId: peerId.trim(),
-      displayName: displayName.trim(),
-    });
+    const normalizedPeerId = peerId.trim();
+    const normalizedDisplayName = displayName.trim();
+
+    if (socket.data.peerId) {
+      console.log('[signaling] Dang ky that bai: ket noi nay da dang ky');
+      return;
+    }
+
+    if (peers.has(normalizedPeerId)) {
+      console.log('[signaling] Dang ky that bai: Peer ID da ton tai');
+      return;
+    }
+
+    const peer = {
+      peerId: normalizedPeerId,
+      displayName: normalizedDisplayName,
+      socketId: socket.id,
+      status: 'ONLINE',
+    };
+
+    peers.set(normalizedPeerId, peer);
+    socket.data.peerId = normalizedPeerId;
+
+    console.log('[signaling] Dang ky peer thanh cong:', peer);
   });
 });
 
