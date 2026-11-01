@@ -6,3 +6,10 @@ const SIGNAL_URL =
 export const signalingSocket = io(SIGNAL_URL, {
   autoConnect: false,
 });
+
+export function registerPeer(peerId, displayName) {
+  signalingSocket.emit('peer:register', {
+    peerId,
+    displayName,
+  });
+}
