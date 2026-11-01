@@ -72,6 +72,22 @@ io.on('connection', (socket) => {
 
     console.log('[signaling] Dang ky peer thanh cong:', peer);
   });
+
+  socket.on('disconnect', (reason) => {
+    const peerId = socket.data.peerId;
+
+    if (!peerId) {
+      return;
+    }
+
+    const peer = peers.get(peerId);
+
+    if (peer?.socketId === socket.id) {
+      peers.delete(peerId);
+
+      console.log('[signaling] Peer ngat ket noi:', peerId, reason);
+    }
+  });
 });
 
 // 5. Dùng SIGNAL_PORT nếu có cấu hình; mặc định là cổng 4001.
