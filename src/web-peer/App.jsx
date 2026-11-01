@@ -125,7 +125,6 @@ export default function App() {
           </li>
         ))}
       </ul>
-      <p>Khung dự án đã sẵn sàng để học và xây dựng từng phần.</p>
     </main>
   );
 }
