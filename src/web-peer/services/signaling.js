@@ -62,3 +62,11 @@ export function onOffer(handler) {
     signalingSocket.off(WEBRTC_EVENTS.OFFER, handler);
   };
 }
+
+export function onAnswer(handler) {
+  signalingSocket.on(WEBRTC_EVENTS.ANSWER, handler);
+
+  return () => {
+    signalingSocket.off(WEBRTC_EVENTS.ANSWER, handler);
+  };
+}
