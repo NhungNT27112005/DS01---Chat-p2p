@@ -78,3 +78,11 @@ export function onIceCandidate(handler) {
     signalingSocket.off(WEBRTC_EVENTS.ICE_CANDIDATE, handler);
   };
 }
+
+export function onWebRTCError(handler) {
+  signalingSocket.on(WEBRTC_EVENTS.ERROR, handler);
+
+  return () => {
+    signalingSocket.off(WEBRTC_EVENTS.ERROR, handler);
+  };
+}
