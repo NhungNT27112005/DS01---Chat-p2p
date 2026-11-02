@@ -9,6 +9,7 @@ export default function App() {
   const [registrationStatus, setRegistrationStatus] = useState('');
   const [onlinePeers, setOnlinePeers] = useState([]);
   const [currentPeer, setCurrentPeer] = useState(null);
+  const [selectedPeerId, setSelectedPeerId] = useState('');
 
   useEffect(() => {
     function handleConnect() {
@@ -21,6 +22,7 @@ export default function App() {
       setRegistrationStatus('');
       setOnlinePeers([]);
       setCurrentPeer(null);
+      setSelectedPeerId('');
     }
 
     function handleConnectError(error) {
@@ -37,6 +39,14 @@ export default function App() {
 
     function handlePeerList(peerList) {
       setOnlinePeers(peerList);
+
+      setSelectedPeerId((previousId) => {
+        const stillOnline = peerList.some(
+          (peer) => peer.peerId === previousId
+        );
+
+        return stillOnline ? previousId : '';
+      });
     }
 
     signalingSocket.on('connect', handleConnect);
@@ -122,9 +132,22 @@ export default function App() {
         {onlinePeers.map((peer) => (
           <li key={peer.peerId}>
             {peer.displayName} ({peer.peerId}) — {peer.status}
+
+            {currentPeer && peer.peerId !== currentPeer.peerId && (
+              <button
+                type="button"
+                onClick={() => setSelectedPeerId(peer.peerId)}
+              >
+                Chọn chat
+              </button>
+            )}
           </li>
         ))}
       </ul>
+
+      {selectedPeerId && (
+        <p>Peer muốn chat: {selectedPeerId}</p>
+      )}
     </main>
   );
 }
