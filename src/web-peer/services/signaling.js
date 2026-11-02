@@ -26,3 +26,15 @@ export function sendOffer(receiverId, sessionId, offer) {
     offer,
   });
 }
+
+export function sendAnswer(receiverId, sessionId, answer) {
+  if (!signalingSocket.connected) {
+    throw new Error('Chưa kết nối tới signaling server.');
+  }
+
+  signalingSocket.emit(WEBRTC_EVENTS.ANSWER, {
+    receiverId,
+    sessionId,
+    answer,
+  });
+}
