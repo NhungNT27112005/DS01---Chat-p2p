@@ -15,7 +15,30 @@ function createPeerConnection(peerId, sessionId) {
     pendingCandidates: [],
   };
 
+  peerConnection.ondatachannel = (event) => {
+    if (connection.dataChannel) {
+      event.channel.close();
+      return;
+    }
+
+    connection.dataChannel = event.channel;
+  };
+
   connections.set(peerId, connection);
 
   return connection;
+}
+
+function createDataChannel(connection) {
+  if (connection.dataChannel) {
+    throw new Error('Kết nối này đã có DataChannel.');
+  }
+
+  const dataChannel = connection.peerConnection.createDataChannel('chat', {
+    ordered: true,
+  });
+
+  connection.dataChannel = dataChannel;
+
+  return dataChannel;
 }
