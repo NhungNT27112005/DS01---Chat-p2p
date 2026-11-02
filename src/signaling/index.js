@@ -1,6 +1,7 @@
 import express from 'express';
 import { createServer } from 'node:http';
 import { Server } from 'socket.io';
+import { WEBRTC_EVENTS } from '../shared/webrtc-events.js';
 
 // 1. Tạo ứng dụng Express để xử lý các yêu cầu HTTP.
 const app = express();
@@ -112,6 +113,73 @@ io.on('connection', (socket) => {
     io.emit('peers:list', getPeerList());
 
     console.log('[signaling] Dang ky peer thanh cong:', peer);
+  });
+
+  socket.on(WEBRTC_EVENTS.OFFER, (data) => {
+    const senderId = socket.data.peerId;
+
+    const receiverId =
+      typeof data?.receiverId === 'string'
+        ? data.receiverId.trim()
+        : '';
+
+    const sessionId =
+      typeof data?.sessionId === 'string'
+        ? data.sessionId.trim()
+        : '';
+
+    const offer = data?.offer;
+
+    // Người gửi phải có đăng ký gắn với socket hiện tại.
+    if (!senderId || peers.get(senderId)?.socketId !== socket.id) {
+      socket.emit(WEBRTC_EVENTS.ERROR, {
+        code: 'NOT_REGISTERED',
+        receiverId,
+        sessionId,
+        message: 'Bạn cần tham gia mạng trước khi kết nối.',
+      });
+      return;
+    }
+
+    // Kiểm tra người nhận, phiên và cấu trúc offer.
+    if (
+      !receiverId ||
+      receiverId === senderId ||
+      !sessionId ||
+      offer?.type !== 'offer' ||
+      typeof offer?.sdp !== 'string' ||
+      !offer.sdp.trim()
+    ) {
+      socket.emit(WEBRTC_EVENTS.ERROR, {
+        code: 'INVALID_OFFER',
+        receiverId,
+        sessionId,
+        message: 'Thông tin offer không hợp lệ.',
+      });
+      return;
+    }
+
+    const receiver = peers.get(receiverId);
+
+    if (!receiver) {
+      socket.emit(WEBRTC_EVENTS.ERROR, {
+        code: 'PEER_OFFLINE',
+        receiverId,
+        sessionId,
+        message: 'Peer đích hiện không online.',
+      });
+      return;
+    }
+
+    io.to(receiver.socketId).emit(WEBRTC_EVENTS.OFFER, {
+      senderId,
+      receiverId,
+      sessionId,
+      offer: {
+        type: 'offer',
+        sdp: offer.sdp,
+      },
+    });
   });
 
   socket.on('disconnect', (reason) => {
