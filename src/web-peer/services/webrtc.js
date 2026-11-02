@@ -1,4 +1,5 @@
 const connections = new Map();
+const stateListeners = new Set();
 
 function createPeerConnection(peerId, sessionId) {
   if (connections.has(peerId)) {
@@ -41,4 +42,31 @@ function createDataChannel(connection) {
   connection.dataChannel = dataChannel;
 
   return dataChannel;
+}
+
+export function onStateChange(handler) {
+  stateListeners.add(handler);
+
+  return () => {
+    stateListeners.delete(handler);
+  };
+}
+
+function emitState(
+  connection,
+  state,
+  reason = null,
+  intentional = false,
+) {
+  const event = {
+    peerId: connection.peerId,
+    sessionId: connection.sessionId,
+    state,
+    reason,
+    intentional,
+  };
+
+  for (const handler of stateListeners) {
+    handler(event);
+  }
 }
