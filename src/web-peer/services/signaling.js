@@ -38,3 +38,19 @@ export function sendAnswer(receiverId, sessionId, answer) {
     answer,
   });
 }
+
+export function sendIceCandidate(receiverId, sessionId, candidate) {
+  if (candidate === null) {
+    return;
+  }
+
+  if (!signalingSocket.connected) {
+    throw new Error('Chưa kết nối tới signaling server.');
+  }
+
+  signalingSocket.emit(WEBRTC_EVENTS.ICE_CANDIDATE, {
+    receiverId,
+    sessionId,
+    candidate,
+  });
+}
