@@ -182,6 +182,73 @@ io.on('connection', (socket) => {
     });
   });
 
+  socket.on(WEBRTC_EVENTS.ANSWER, (data) => {
+    const senderId = socket.data.peerId;
+
+    const receiverId =
+      typeof data?.receiverId === 'string'
+        ? data.receiverId.trim()
+        : '';
+
+    const sessionId =
+      typeof data?.sessionId === 'string'
+        ? data.sessionId.trim()
+        : '';
+
+    const answer = data?.answer;
+
+    // Người gửi phải có đăng ký gắn với socket hiện tại.
+    if (!senderId || peers.get(senderId)?.socketId !== socket.id) {
+      socket.emit(WEBRTC_EVENTS.ERROR, {
+        code: 'NOT_REGISTERED',
+        receiverId,
+        sessionId,
+        message: 'Bạn cần tham gia mạng trước khi kết nối.',
+      });
+      return;
+    }
+
+    // Kiểm tra người nhận, phiên và cấu trúc answer.
+    if (
+      !receiverId ||
+      receiverId === senderId ||
+      !sessionId ||
+      answer?.type !== 'answer' ||
+      typeof answer?.sdp !== 'string' ||
+      !answer.sdp.trim()
+    ) {
+      socket.emit(WEBRTC_EVENTS.ERROR, {
+        code: 'INVALID_ANSWER',
+        receiverId,
+        sessionId,
+        message: 'Thông tin answer không hợp lệ.',
+      });
+      return;
+    }
+
+    const receiver = peers.get(receiverId);
+
+    if (!receiver) {
+      socket.emit(WEBRTC_EVENTS.ERROR, {
+        code: 'PEER_OFFLINE',
+        receiverId,
+        sessionId,
+        message: 'Peer đích hiện không online.',
+      });
+      return;
+    }
+
+    io.to(receiver.socketId).emit(WEBRTC_EVENTS.ANSWER, {
+      senderId,
+      receiverId,
+      sessionId,
+      answer: {
+        type: 'answer',
+        sdp: answer.sdp,
+      },
+    });
+  });
+
   socket.on('disconnect', (reason) => {
     const peerId = socket.data.peerId;
 
