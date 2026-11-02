@@ -54,3 +54,11 @@ export function sendIceCandidate(receiverId, sessionId, candidate) {
     candidate,
   });
 }
+
+export function onOffer(handler) {
+  signalingSocket.on(WEBRTC_EVENTS.OFFER, handler);
+
+  return () => {
+    signalingSocket.off(WEBRTC_EVENTS.OFFER, handler);
+  };
+}
