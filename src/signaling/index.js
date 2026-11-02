@@ -249,6 +249,72 @@ io.on('connection', (socket) => {
     });
   });
 
+  // 4.1.3. Xử lý sự kiện ICE_CANDIDATE từ client.
+  socket.on(WEBRTC_EVENTS.ICE_CANDIDATE, (data) => {
+    const senderId = socket.data.peerId;
+
+    const receiverId =
+      typeof data?.receiverId === 'string'
+        ? data.receiverId.trim()
+        : '';
+
+    const sessionId =
+      typeof data?.sessionId === 'string'
+        ? data.sessionId.trim()
+        : '';
+
+    const candidate = data?.candidate;
+
+    // Người gửi phải có đăng ký gắn với socket hiện tại.
+    if (!senderId || peers.get(senderId)?.socketId !== socket.id) {
+      socket.emit(WEBRTC_EVENTS.ERROR, {
+        code: 'NOT_REGISTERED',
+        receiverId,
+        sessionId,
+        message: 'Bạn cần tham gia mạng trước khi kết nối.',
+      });
+      return;
+    }
+
+    // Kiểm tra người nhận, phiên và cấu trúc cơ bản của candidate.
+    if (
+      !receiverId ||
+      receiverId === senderId ||
+      !sessionId ||
+      !candidate ||
+      typeof candidate !== 'object' ||
+      Array.isArray(candidate) ||
+      typeof candidate.candidate !== 'string'
+    ) {
+      socket.emit(WEBRTC_EVENTS.ERROR, {
+        code: 'INVALID_ICE_CANDIDATE',
+        receiverId,
+        sessionId,
+        message: 'Thông tin ICE candidate không hợp lệ.',
+      });
+      return;
+    }
+
+    const receiver = peers.get(receiverId);
+
+    if (!receiver) {
+      socket.emit(WEBRTC_EVENTS.ERROR, {
+        code: 'PEER_OFFLINE',
+        receiverId,
+        sessionId,
+        message: 'Peer đích hiện không online.',
+      });
+      return;
+    }
+
+    io.to(receiver.socketId).emit(WEBRTC_EVENTS.ICE_CANDIDATE, {
+      senderId,
+      receiverId,
+      sessionId,
+      candidate,
+    });
+  });
+
   socket.on('disconnect', (reason) => {
     const peerId = socket.data.peerId;
 
