@@ -70,3 +70,11 @@ export function onAnswer(handler) {
     signalingSocket.off(WEBRTC_EVENTS.ANSWER, handler);
   };
 }
+
+export function onIceCandidate(handler) {
+  signalingSocket.on(WEBRTC_EVENTS.ICE_CANDIDATE, handler);
+
+  return () => {
+    signalingSocket.off(WEBRTC_EVENTS.ICE_CANDIDATE, handler);
+  };
+}
