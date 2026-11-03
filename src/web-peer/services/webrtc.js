@@ -1,4 +1,8 @@
-import { sendIceCandidate, sendOffer } from './signaling.js';
+import {
+  sendIceCandidate,
+  sendOffer,
+  sendAnswer,
+} from './signaling.js';
 
 const connections = new Map();
 const stateListeners = new Set();
@@ -293,6 +297,48 @@ async function createAndSendOffer(connection) {
   const description = peerConnection.localDescription;
 
   sendOffer(
+    connection.peerId,
+    connection.sessionId,
+    {
+      type: description.type,
+      sdp: description.sdp,
+    },
+  );
+}
+
+async function createAndSendAnswer(connection, offer) {
+  const peerConnection = connection.peerConnection;
+
+  const isCurrent = () =>
+    connections.get(connection.peerId) === connection;
+
+  await peerConnection.setRemoteDescription(offer);
+
+  if (!isCurrent()) {
+    return;
+  }
+
+  await flushPendingCandidates(connection);
+
+  if (!isCurrent()) {
+    return;
+  }
+
+  const answer = await peerConnection.createAnswer();
+
+  if (!isCurrent()) {
+    return;
+  }
+
+  await peerConnection.setLocalDescription(answer);
+
+  if (!isCurrent()) {
+    return;
+  }
+
+  const description = peerConnection.localDescription;
+
+  sendAnswer(
     connection.peerId,
     connection.sessionId,
     {
