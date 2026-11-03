@@ -22,7 +22,7 @@ function createPeerConnection(peerId, sessionId) {
       return;
     }
 
-    connection.dataChannel = event.channel;
+    bindDataChannel(connection, event.channel);
   };
 
   connections.set(peerId, connection);
@@ -39,7 +39,7 @@ function createDataChannel(connection) {
     ordered: true,
   });
 
-  connection.dataChannel = dataChannel;
+  bindDataChannel(connection, dataChannel);
 
   return dataChannel;
 }
@@ -69,4 +69,39 @@ function emitState(
   for (const handler of stateListeners) {
     handler(event);
   }
+}
+
+function bindDataChannel(connection, dataChannel) {
+  connection.dataChannel = dataChannel;
+
+  const isCurrent = () =>
+    connections.get(connection.peerId) === connection &&
+    connection.dataChannel === dataChannel;
+
+  dataChannel.onopen = () => {
+    if (!isCurrent()) {
+      return;
+    }
+
+    emitState(connection, 'DIRECT_READY');
+  };
+
+  dataChannel.onclose = () => {
+    if (!isCurrent()) {
+      return;
+    }
+
+    emitState(connection, 'CLOSED', 'DataChannel đã đóng.');
+  };
+
+  dataChannel.onerror = (event) => {
+    if (!isCurrent()) {
+      return;
+    }
+
+    const reason =
+      event.error?.message || 'DataChannel gặp lỗi.';
+
+    emitState(connection, 'FAILED', reason);
+  };
 }
