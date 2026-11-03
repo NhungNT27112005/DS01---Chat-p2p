@@ -1,10 +1,12 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { signalingSocket, registerPeer } from './services/signaling.js';
 import {
   startWebRTC,
   onStateChange,
   connect as connectWebRTC,
+  send as sendWebRTC,
 } from './services/webrtc.js';
+import { createChatMessage } from '../shared/messages.js';
 
 export default function App() {
   const [connectionStatus, setConnectionStatus] =
@@ -17,6 +19,9 @@ export default function App() {
   const [selectedPeerId, setSelectedPeerId] = useState('');
   const [webrtcStates, setWebrtcStates] = useState({});
   const [webrtcErrors, setWebrtcErrors] = useState({});
+  const [drafts, setDrafts] = useState({});
+  const [sendFeedback, setSendFeedback] = useState({});
+  const sequenceRef = useRef(new Map());
 
   useEffect(() => {
     function handleWebRTCState(event) {
@@ -125,6 +130,61 @@ export default function App() {
     }
   }
 
+  function handleSendMessage(event) {
+    event.preventDefault();
+
+    const receiverId = selectedPeerId;
+    const connection = webrtcStates[receiverId];
+    const content = drafts[receiverId] || '';
+
+    if (
+      !currentPeer ||
+      !receiverId ||
+      connection?.state !== 'DIRECT_READY' ||
+      !content.trim()
+    ) {
+      return;
+    }
+
+    try {
+      const sequenceKey = JSON.stringify([
+        currentPeer.peerId,
+        receiverId,
+        connection.sessionId,
+      ]);
+
+      const sequence =
+        (sequenceRef.current.get(sequenceKey) || 0) + 1;
+
+      const message = createChatMessage({
+        senderId: currentPeer.peerId,
+        receiverId,
+        sessionId: connection.sessionId,
+        sequence,
+        content,
+      });
+
+      sendWebRTC(receiverId, message);
+
+      sequenceRef.current.set(sequenceKey, sequence);
+
+      setDrafts((previous) => ({
+        ...previous,
+        [receiverId]: '',
+      }));
+
+      setSendFeedback((previous) => ({
+        ...previous,
+        [receiverId]: 'Đã đưa tin vào DataChannel.',
+      }));
+    } catch (error) {
+      setSendFeedback((previous) => ({
+        ...previous,
+        [receiverId]: error?.message || 'Không thể gửi tin nhắn.',
+      }));
+    }
+  }
+
   return (
     <main>
       <p className="label">DS01 · GIAI ĐOẠN 1</p>
@@ -218,6 +278,45 @@ export default function App() {
 
           {webrtcErrors[selectedPeerId] && (
             <p role="alert">{webrtcErrors[selectedPeerId]}</p>
+          )}
+
+          <form onSubmit={handleSendMessage}>
+            <p>
+              <label>
+                Tin nhắn:
+                <input
+                  type="text"
+                  value={drafts[selectedPeerId] || ''}
+                  onChange={(event) => {
+                    const content = event.target.value;
+
+                    setDrafts((previous) => ({
+                      ...previous,
+                      [selectedPeerId]: content,
+                    }));
+                  }}
+                  disabled={
+                    webrtcStates[selectedPeerId]?.state !== 'DIRECT_READY'
+                  }
+                  placeholder="Nhập tin nhắn..."
+                />
+              </label>
+            </p>
+
+            <button
+              type="submit"
+              disabled={
+                !currentPeer ||
+                webrtcStates[selectedPeerId]?.state !== 'DIRECT_READY' ||
+                !(drafts[selectedPeerId] || '').trim()
+              }
+            >
+              Gửi tin
+            </button>
+          </form>
+
+          {sendFeedback[selectedPeerId] && (
+            <p role="status">{sendFeedback[selectedPeerId]}</p>
           )}
         </section>
       )}
