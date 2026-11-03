@@ -1,3 +1,5 @@
+import { sendIceCandidate } from './signaling.js';
+
 const connections = new Map();
 const stateListeners = new Set();
 const messageListeners = new Set();
@@ -15,6 +17,30 @@ function createPeerConnection(peerId, sessionId) {
     peerConnection,
     dataChannel: null,
     pendingCandidates: [],
+  };
+
+  peerConnection.onicecandidate = (event) => {
+    if (connections.get(peerId) !== connection) {
+      return;
+    }
+
+    if (event.candidate === null) {
+      return;
+    }
+
+    try {
+      sendIceCandidate(
+        peerId,
+        sessionId,
+        event.candidate.toJSON(),
+      );
+    } catch (error) {
+      emitState(
+        connection,
+        'FAILED',
+        error?.message || 'Không thể gửi ICE candidate.',
+      );
+    }
   };
 
   peerConnection.ondatachannel = (event) => {
