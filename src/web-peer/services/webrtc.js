@@ -208,3 +208,43 @@ export function send(peerId, message) {
 
   return { deliveryMode: 'DIRECT' };
 }
+
+async function handleRemoteIceCandidate(data) {
+  const connection = connections.get(data?.senderId);
+
+  if (!connection || connection.sessionId !== data?.sessionId) {
+    return;
+  }
+
+  const candidate = data?.candidate;
+
+  if (
+    !candidate ||
+    typeof candidate !== 'object' ||
+    Array.isArray(candidate) ||
+    typeof candidate.candidate !== 'string'
+  ) {
+    return;
+  }
+
+  const peerConnection = connection.peerConnection;
+
+  if (!peerConnection.remoteDescription) {
+    connection.pendingCandidates.push(candidate);
+    return;
+  }
+
+  try {
+    await peerConnection.addIceCandidate(candidate);
+  } catch (error) {
+    if (connections.get(connection.peerId) !== connection) {
+      return;
+    }
+
+    emitState(
+      connection,
+      'FAILED',
+      error?.message || 'Không thể thêm ICE candidate.',
+    );
+  }
+}
