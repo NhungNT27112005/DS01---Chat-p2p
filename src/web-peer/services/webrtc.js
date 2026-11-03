@@ -154,3 +154,31 @@ function emitMessage(connection, message) {
     handler(event);
   }
 }
+
+export function send(peerId, message) {
+  const connection = connections.get(peerId);
+
+  if (!connection) {
+    throw new Error('Chưa có kết nối WebRTC với peer này.');
+  }
+
+  const dataChannel = connection.dataChannel;
+
+  if (!dataChannel || dataChannel.readyState !== 'open') {
+    throw new Error('DataChannel chưa sẵn sàng để gửi dữ liệu.');
+  }
+
+  if (
+    message === null ||
+    typeof message !== 'object' ||
+    Array.isArray(message)
+  ) {
+    throw new Error('Gói tin phải là một object.');
+  }
+
+  const data = JSON.stringify(message);
+
+  dataChannel.send(data);
+
+  return { deliveryMode: 'DIRECT' };
+}
