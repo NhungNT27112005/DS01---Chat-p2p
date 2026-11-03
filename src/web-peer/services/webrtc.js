@@ -461,3 +461,47 @@ async function handleRemoteOffer(data) {
     );
   }
 }
+
+function waitForDirectReady(connection, timeoutMs = 10000) {
+  return new Promise((resolve, reject) => {
+    let timer;
+
+    function cleanup() {
+      clearTimeout(timer);
+      stopListening();
+    }
+
+    const stopListening = onStateChange((event) => {
+      if (
+        event.peerId !== connection.peerId ||
+        event.sessionId !== connection.sessionId
+      ) {
+        return;
+      }
+
+      if (event.state === 'DIRECT_READY') {
+        cleanup();
+        resolve();
+        return;
+      }
+
+      if (
+        event.state === 'FAILED' ||
+        event.state === 'CLOSED'
+      ) {
+        cleanup();
+        reject(new Error(event.reason || 'Kết nối WebRTC thất bại.'));
+      }
+    });
+
+    timer = setTimeout(() => {
+      cleanup();
+      reject(new Error('Hết thời gian chờ kết nối WebRTC.'));
+    }, timeoutMs);
+
+    if (connection.dataChannel?.readyState === 'open') {
+      cleanup();
+      resolve();
+    }
+  });
+}
