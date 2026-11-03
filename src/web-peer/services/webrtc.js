@@ -1,5 +1,6 @@
 const connections = new Map();
 const stateListeners = new Set();
+const messageListeners = new Set();
 
 function createPeerConnection(peerId, sessionId) {
   if (connections.has(peerId)) {
@@ -78,6 +79,34 @@ function bindDataChannel(connection, dataChannel) {
     connections.get(connection.peerId) === connection &&
     connection.dataChannel === dataChannel;
 
+  dataChannel.onmessage = (event) => {
+    if (!isCurrent()) {
+      return;
+    }
+
+    if (typeof event.data !== 'string') {
+      return;
+    }
+
+    let message;
+
+    try {
+      message = JSON.parse(event.data);
+    } catch {
+      return;
+    }
+
+    if (
+      message === null ||
+      typeof message !== 'object' ||
+      Array.isArray(message)
+    ) {
+      return;
+    }
+
+    emitMessage(connection, message);
+  };
+
   dataChannel.onopen = () => {
     if (!isCurrent()) {
       return;
@@ -104,4 +133,24 @@ function bindDataChannel(connection, dataChannel) {
 
     emitState(connection, 'FAILED', reason);
   };
+}
+
+export function onMessage(handler) {
+  messageListeners.add(handler);
+
+  return () => {
+    messageListeners.delete(handler);
+  };
+}
+
+function emitMessage(connection, message) {
+  const event = {
+    peerId: connection.peerId,
+    sessionId: connection.sessionId,
+    message,
+  };
+
+  for (const handler of messageListeners) {
+    handler(event);
+  }
 }
