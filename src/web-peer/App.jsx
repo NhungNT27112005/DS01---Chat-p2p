@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { signalingSocket, registerPeer } from './services/signaling.js';
+import { startWebRTC } from './services/webrtc.js';
 
 export default function App() {
   const [connectionStatus, setConnectionStatus] =
@@ -55,9 +56,13 @@ export default function App() {
     signalingSocket.on('peer:register:result', handleRegisterResult);
     signalingSocket.on('peers:list', handlePeerList);
 
+    const stopWebRTC = startWebRTC();
+
     signalingSocket.connect();
 
     return () => {
+      stopWebRTC();
+
       signalingSocket.off('connect', handleConnect);
       signalingSocket.off('disconnect', handleDisconnect);
       signalingSocket.off('connect_error', handleConnectError);
