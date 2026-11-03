@@ -2,6 +2,7 @@ import {
   sendIceCandidate,
   sendOffer,
   sendAnswer,
+  onOffer,
   onAnswer,
   onIceCandidate,
 } from './signaling.js';
@@ -395,6 +396,7 @@ async function handleRemoteAnswer(data) {
 }
 
 export function startWebRTC() {
+  const stopOffer = onOffer(handleRemoteOffer);
   const stopAnswer = onAnswer(handleRemoteAnswer);
 
   const stopIceCandidate = onIceCandidate(
@@ -402,6 +404,7 @@ export function startWebRTC() {
   );
 
   return () => {
+    stopOffer();
     stopAnswer();
     stopIceCandidate();
   };
