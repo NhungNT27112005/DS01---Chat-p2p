@@ -229,7 +229,10 @@ async function handleRemoteIceCandidate(data) {
 
   const peerConnection = connection.peerConnection;
 
-  if (!peerConnection.remoteDescription) {
+  if (
+    !peerConnection.remoteDescription ||
+    connection.pendingCandidates.length > 0
+  ) {
     connection.pendingCandidates.push(candidate);
     return;
   }
@@ -246,5 +249,26 @@ async function handleRemoteIceCandidate(data) {
       'FAILED',
       error?.message || 'Không thể thêm ICE candidate.',
     );
+  }
+}
+
+async function flushPendingCandidates(connection) {
+  const peerConnection = connection.peerConnection;
+
+  if (!peerConnection.remoteDescription) {
+    return;
+  }
+
+  while (connection.pendingCandidates.length > 0) {
+    if (
+      connections.get(connection.peerId) !== connection ||
+      peerConnection.signalingState === 'closed'
+    ) {
+      return;
+    }
+
+    const candidate = connection.pendingCandidates.shift();
+
+    await peerConnection.addIceCandidate(candidate);
   }
 }
