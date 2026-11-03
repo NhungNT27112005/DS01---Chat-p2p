@@ -1,4 +1,4 @@
-import { sendIceCandidate } from './signaling.js';
+import { sendIceCandidate, sendOffer } from './signaling.js';
 
 const connections = new Map();
 const stateListeners = new Set();
@@ -271,4 +271,33 @@ async function flushPendingCandidates(connection) {
 
     await peerConnection.addIceCandidate(candidate);
   }
+}
+
+async function createAndSendOffer(connection) {
+  const peerConnection = connection.peerConnection;
+
+  createDataChannel(connection);
+
+  const offer = await peerConnection.createOffer();
+
+  if (connections.get(connection.peerId) !== connection) {
+    return;
+  }
+
+  await peerConnection.setLocalDescription(offer);
+
+  if (connections.get(connection.peerId) !== connection) {
+    return;
+  }
+
+  const description = peerConnection.localDescription;
+
+  sendOffer(
+    connection.peerId,
+    connection.sessionId,
+    {
+      type: description.type,
+      sdp: description.sdp,
+    },
+  );
 }
