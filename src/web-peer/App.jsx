@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react';
 import { signalingSocket, registerPeer } from './services/signaling.js';
-import { startWebRTC } from './services/webrtc.js';
+import {
+  startWebRTC,
+  onStateChange,
+} from './services/webrtc.js';
 
 export default function App() {
   const [connectionStatus, setConnectionStatus] =
@@ -11,8 +14,16 @@ export default function App() {
   const [onlinePeers, setOnlinePeers] = useState([]);
   const [currentPeer, setCurrentPeer] = useState(null);
   const [selectedPeerId, setSelectedPeerId] = useState('');
+  const [webrtcStates, setWebrtcStates] = useState({});
 
   useEffect(() => {
+    function handleWebRTCState(event) {
+      setWebrtcStates((previous) => ({
+        ...previous,
+        [event.peerId]: event,
+      }));
+    }
+
     function handleConnect() {
       setConnectionStatus('Đã kết nối signaling');
       setRegistrationStatus('');
@@ -56,11 +67,13 @@ export default function App() {
     signalingSocket.on('peer:register:result', handleRegisterResult);
     signalingSocket.on('peers:list', handlePeerList);
 
+    const stopWebRTCState = onStateChange(handleWebRTCState);
     const stopWebRTC = startWebRTC();
 
     signalingSocket.connect();
 
     return () => {
+      stopWebRTCState();
       stopWebRTC();
 
       signalingSocket.off('connect', handleConnect);
@@ -151,7 +164,14 @@ export default function App() {
       </ul>
 
       {selectedPeerId && (
-        <p>Peer muốn chat: {selectedPeerId}</p>
+        <section>
+          <p>Peer muốn chat: {selectedPeerId}</p>
+
+          <p>
+            Trạng thái WebRTC:{' '}
+            {webrtcStates[selectedPeerId]?.state || 'Chưa kết nối'}
+          </p>
+        </section>
       )}
     </main>
   );
