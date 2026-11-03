@@ -3,6 +3,7 @@ import { signalingSocket, registerPeer } from './services/signaling.js';
 import {
   startWebRTC,
   onStateChange,
+  connect as connectWebRTC,
 } from './services/webrtc.js';
 
 export default function App() {
@@ -15,6 +16,7 @@ export default function App() {
   const [currentPeer, setCurrentPeer] = useState(null);
   const [selectedPeerId, setSelectedPeerId] = useState('');
   const [webrtcStates, setWebrtcStates] = useState({});
+  const [webrtcErrors, setWebrtcErrors] = useState({});
 
   useEffect(() => {
     function handleWebRTCState(event) {
@@ -94,6 +96,35 @@ export default function App() {
     registerPeer(peerId, displayName);
   }
 
+  async function handleConnectWebRTC() {
+    const receiverId = selectedPeerId;
+
+    if (
+      !currentPeer ||
+      !receiverId ||
+      !signalingSocket.connected
+    ) {
+      return;
+    }
+
+    setWebrtcErrors((previous) => ({
+      ...previous,
+      [receiverId]: '',
+    }));
+
+    try {
+      const sessionId = crypto.randomUUID();
+
+      await connectWebRTC(receiverId, sessionId);
+    } catch (error) {
+      setWebrtcErrors((previous) => ({
+        ...previous,
+        [receiverId]:
+          error?.message || 'Không thể kết nối WebRTC.',
+      }));
+    }
+  }
+
   return (
     <main>
       <p className="label">DS01 · GIAI ĐOẠN 1</p>
@@ -171,6 +202,23 @@ export default function App() {
             Trạng thái WebRTC:{' '}
             {webrtcStates[selectedPeerId]?.state || 'Chưa kết nối'}
           </p>
+
+          <button
+            type="button"
+            onClick={handleConnectWebRTC}
+            disabled={
+              !currentPeer ||
+              !signalingSocket.connected ||
+              webrtcStates[selectedPeerId]?.state === 'CONNECTING' ||
+              webrtcStates[selectedPeerId]?.state === 'DIRECT_READY'
+            }
+          >
+            Kết nối WebRTC
+          </button>
+
+          {webrtcErrors[selectedPeerId] && (
+            <p role="alert">{webrtcErrors[selectedPeerId]}</p>
+          )}
         </section>
       )}
     </main>
