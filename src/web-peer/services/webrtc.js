@@ -2,6 +2,8 @@ import {
   sendIceCandidate,
   sendOffer,
   sendAnswer,
+  onAnswer,
+  onIceCandidate,
 } from './signaling.js';
 
 const connections = new Map();
@@ -390,4 +392,17 @@ async function handleRemoteAnswer(data) {
       error?.message || 'Không thể áp dụng answer.',
     );
   }
+}
+
+export function startWebRTC() {
+  const stopAnswer = onAnswer(handleRemoteAnswer);
+
+  const stopIceCandidate = onIceCandidate(
+    handleRemoteIceCandidate,
+  );
+
+  return () => {
+    stopAnswer();
+    stopIceCandidate();
+  };
 }
