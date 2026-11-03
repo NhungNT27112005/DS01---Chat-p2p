@@ -406,3 +406,55 @@ export function startWebRTC() {
     stopIceCandidate();
   };
 }
+
+async function handleRemoteOffer(data) {
+  const senderId = data?.senderId;
+  const sessionId = data?.sessionId;
+  const offer = data?.offer;
+
+  if (
+    typeof senderId !== 'string' ||
+    !senderId.trim() ||
+    typeof sessionId !== 'string' ||
+    !sessionId.trim() ||
+    offer?.type !== 'offer' ||
+    typeof offer.sdp !== 'string' ||
+    !offer.sdp.trim()
+  ) {
+    return;
+  }
+
+  if (connections.has(senderId)) {
+    return;
+  }
+
+  let connection = null;
+
+  try {
+    connection = createPeerConnection(senderId, sessionId);
+
+    emitState(connection, 'CONNECTING');
+
+    await createAndSendAnswer(connection, offer);
+  } catch (error) {
+    if (
+      connection &&
+      connections.get(senderId) !== connection
+    ) {
+      return;
+    }
+
+    if (connection) {
+      connections.delete(senderId);
+      connection.dataChannel?.close();
+      connection.peerConnection.close();
+      connection.pendingCandidates.length = 0;
+    }
+
+    emitState(
+      connection || { peerId: senderId, sessionId },
+      'FAILED',
+      error?.message || 'Không thể xử lý offer.',
+    );
+  }
+}
