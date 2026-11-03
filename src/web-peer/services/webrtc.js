@@ -505,3 +505,71 @@ function waitForDirectReady(connection, timeoutMs = 10000) {
     }
   });
 }
+
+export async function connect(peerId, sessionId) {
+  if (
+    typeof peerId !== 'string' ||
+    !peerId.trim() ||
+    typeof sessionId !== 'string' ||
+    !sessionId.trim()
+  ) {
+    throw new Error('Peer ID và Session ID không được để trống.');
+  }
+
+  peerId = peerId.trim();
+  sessionId = sessionId.trim();
+
+  const existing = connections.get(peerId);
+
+  if (existing?.dataChannel?.readyState === 'open') {
+    return {
+      peerId,
+      sessionId: existing.sessionId,
+      deliveryMode: 'DIRECT',
+    };
+  }
+
+  let connection = null;
+
+  try {
+    connection = createPeerConnection(peerId, sessionId);
+
+    emitState(connection, 'CONNECTING');
+
+    await Promise.all([
+      waitForDirectReady(connection),
+      createAndSendOffer(connection),
+    ]);
+
+    if (
+      connections.get(peerId) !== connection ||
+      connection.dataChannel?.readyState !== 'open'
+    ) {
+      throw new Error('Kết nối WebRTC không còn sẵn sàng.');
+    }
+
+    return {
+      peerId,
+      sessionId,
+      deliveryMode: 'DIRECT',
+    };
+  } catch (error) {
+    if (
+      connection &&
+      connections.get(peerId) === connection
+    ) {
+      connections.delete(peerId);
+      connection.dataChannel?.close();
+      connection.peerConnection.close();
+      connection.pendingCandidates.length = 0;
+
+      emitState(
+        connection,
+        'FAILED',
+        error?.message || 'Không thể kết nối WebRTC.',
+      );
+    }
+
+    throw error;
+  }
+}
