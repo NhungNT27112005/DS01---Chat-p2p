@@ -347,3 +347,47 @@ async function createAndSendAnswer(connection, offer) {
     },
   );
 }
+
+async function handleRemoteAnswer(data) {
+  const connection = connections.get(data?.senderId);
+
+  if (!connection || connection.sessionId !== data?.sessionId) {
+    return;
+  }
+
+  const answer = data?.answer;
+
+  if (
+    answer?.type !== 'answer' ||
+    typeof answer.sdp !== 'string' ||
+    !answer.sdp.trim()
+  ) {
+    return;
+  }
+
+  const peerConnection = connection.peerConnection;
+
+  if (peerConnection.signalingState !== 'have-local-offer') {
+    return;
+  }
+
+  try {
+    await peerConnection.setRemoteDescription(answer);
+
+    if (connections.get(connection.peerId) !== connection) {
+      return;
+    }
+
+    await flushPendingCandidates(connection);
+  } catch (error) {
+    if (connections.get(connection.peerId) !== connection) {
+      return;
+    }
+
+    emitState(
+      connection,
+      'FAILED',
+      error?.message || 'Không thể áp dụng answer.',
+    );
+  }
+}
