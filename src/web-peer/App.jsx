@@ -106,6 +106,48 @@ export default function App() {
     function handleIncomingMessage(event) {
       const { peerId, sessionId, message } = event;
 
+      if (message.type === 'ACK') {
+        if (
+          message.version !== 1 ||
+          typeof message.messageId !== 'string' ||
+          !message.messageId.trim() ||
+          typeof message.ackFor !== 'string' ||
+          !message.ackFor.trim() ||
+          message.senderId !== peerId ||
+          message.receiverId !== currentPeer.peerId ||
+          message.sessionId !== sessionId ||
+          message.groupId !== null ||
+          message.sequence !== null ||
+          message.content !== null ||
+          !Number.isSafeInteger(message.timestamp) ||
+          message.timestamp < 0
+        ) {
+          return;
+        }
+
+        setChatMessages((previous) =>
+          previous.map((item) => {
+            if (
+              item.type !== 'CHAT_MESSAGE' ||
+              item.messageId !== message.ackFor ||
+              item.senderId !== currentPeer.peerId ||
+              item.receiverId !== peerId ||
+              item.sessionId !== sessionId ||
+              item.status === 'RECEIVED'
+            ) {
+              return item;
+            }
+
+            return {
+              ...item,
+              status: 'RECEIVED',
+            };
+          }),
+        );
+
+        return;
+      }
+
       if (
         message.version !== 1 ||
         message.type !== 'CHAT_MESSAGE' ||
@@ -239,7 +281,10 @@ export default function App() {
 
       setChatMessages((previous) => [
         ...previous,
-        message,
+        {
+          ...message,
+          status: 'SENT',
+        },
       ]);
 
       setDrafts((previous) => ({
@@ -386,6 +431,14 @@ export default function App() {
                     : message.senderId}
                 </strong>
                 : {message.content}
+                {message.senderId === currentPeer?.peerId && (
+                  <small>
+                    {' — '}
+                    {message.status === 'RECEIVED'
+                      ? 'Đã nhận'
+                      : 'Đã gửi, chờ xác nhận'}
+                  </small>
+                )}
               </li>
             ))}
           </ul>
