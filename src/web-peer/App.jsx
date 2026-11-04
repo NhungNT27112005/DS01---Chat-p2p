@@ -3,6 +3,7 @@ import { signalingSocket, registerPeer } from './services/signaling.js';
 import {
   startWebRTC,
   onStateChange,
+  onMessage,
   connect as connectWebRTC,
   send as sendWebRTC,
 } from './services/webrtc.js';
@@ -21,6 +22,7 @@ export default function App() {
   const [webrtcErrors, setWebrtcErrors] = useState({});
   const [drafts, setDrafts] = useState({});
   const [sendFeedback, setSendFeedback] = useState({});
+  const [chatMessages, setChatMessages] = useState([]);
   const sequenceRef = useRef(new Map());
 
   useEffect(() => {
@@ -92,6 +94,51 @@ export default function App() {
       signalingSocket.disconnect();
     };
   }, []);
+
+  useEffect(() => {
+    if (!currentPeer) {
+      return;
+    }
+
+    function handleIncomingMessage(event) {
+      const { peerId, sessionId, message } = event;
+
+      if (
+        message.version !== 1 ||
+        message.type !== 'CHAT_MESSAGE' ||
+        typeof message.messageId !== 'string' ||
+        !message.messageId.trim() ||
+        message.senderId !== peerId ||
+        message.receiverId !== currentPeer.peerId ||
+        message.sessionId !== sessionId ||
+        message.groupId !== null ||
+        !Number.isSafeInteger(message.sequence) ||
+        message.sequence < 1 ||
+        !Number.isSafeInteger(message.timestamp) ||
+        message.timestamp < 0 ||
+        typeof message.content !== 'string' ||
+        !message.content.trim()
+      ) {
+        return;
+      }
+
+      setChatMessages((previous) => {
+        const alreadyExists = previous.some(
+          (item) =>
+            item.senderId === message.senderId &&
+            item.messageId === message.messageId,
+        );
+
+        if (alreadyExists) {
+          return previous;
+        }
+
+        return [...previous, message];
+      });
+    }
+
+    return onMessage(handleIncomingMessage);
+  }, [currentPeer]);
 
   function handleRegister() {
     if (!signalingSocket.connected) {
@@ -168,6 +215,11 @@ export default function App() {
 
       sequenceRef.current.set(sequenceKey, sequence);
 
+      setChatMessages((previous) => [
+        ...previous,
+        message,
+      ]);
+
       setDrafts((previous) => ({
         ...previous,
         [receiverId]: '',
@@ -184,6 +236,18 @@ export default function App() {
       }));
     }
   }
+
+  const conversationMessages = chatMessages.filter(
+    (message) =>
+      (
+        message.senderId === currentPeer?.peerId &&
+        message.receiverId === selectedPeerId
+      ) ||
+      (
+        message.senderId === selectedPeerId &&
+        message.receiverId === currentPeer?.peerId
+      ),
+  );
 
   return (
     <main>
@@ -279,6 +343,30 @@ export default function App() {
           {webrtcErrors[selectedPeerId] && (
             <p role="alert">{webrtcErrors[selectedPeerId]}</p>
           )}
+
+          <h3>Cuộc trò chuyện</h3>
+
+          {conversationMessages.length === 0 && (
+            <p>Chưa có tin nhắn.</p>
+          )}
+
+          <ul>
+            {conversationMessages.map((message) => (
+              <li
+                key={JSON.stringify([
+                  message.senderId,
+                  message.messageId,
+                ])}
+              >
+                <strong>
+                  {message.senderId === currentPeer?.peerId
+                    ? 'Bạn'
+                    : message.senderId}
+                </strong>
+                : {message.content}
+              </li>
+            ))}
+          </ul>
 
           <form onSubmit={handleSendMessage}>
             <p>
