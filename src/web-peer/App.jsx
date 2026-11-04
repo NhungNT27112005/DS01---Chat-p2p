@@ -7,7 +7,10 @@ import {
   connect as connectWebRTC,
   send as sendWebRTC,
 } from './services/webrtc.js';
-import { createChatMessage } from '../shared/messages.js';
+import {
+  createChatMessage,
+  createAckMessage,
+} from '../shared/messages.js';
 
 export default function App() {
   const [connectionStatus, setConnectionStatus] =
@@ -135,6 +138,25 @@ export default function App() {
 
         return [...previous, message];
       });
+
+      try {
+        const ack = createAckMessage({
+          senderId: currentPeer.peerId,
+          receiverId: peerId,
+          sessionId,
+          ackFor: message.messageId,
+        });
+
+        sendWebRTC(peerId, ack);
+      } catch (error) {
+        setSendFeedback((previous) => ({
+          ...previous,
+          [peerId]:
+            `Không thể gửi ACK: ${
+              error?.message || 'Lỗi không xác định.'
+            }`,
+        }));
+      }
     }
 
     return onMessage(handleIncomingMessage);
