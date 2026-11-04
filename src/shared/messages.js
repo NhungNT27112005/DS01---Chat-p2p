@@ -39,3 +39,42 @@ export function createChatMessage({
     deliveryMode: 'DIRECT',
   };
 }
+
+export function createAckMessage({
+  senderId,
+  receiverId,
+  sessionId,
+  ackFor,
+}) {
+  const ids = [
+    senderId,
+    receiverId,
+    sessionId,
+    ackFor,
+  ];
+
+  if (
+    ids.some(
+      (id) => typeof id !== 'string' || !id.trim(),
+    )
+  ) {
+    throw new Error(
+      'Sender ID, Receiver ID, Session ID và ackFor không được để trống.',
+    );
+  }
+
+  return {
+    version: 1,
+    type: 'ACK',
+    messageId: crypto.randomUUID(),
+    sessionId,
+    senderId,
+    receiverId,
+    groupId: null,
+    sequence: null,
+    timestamp: Date.now(),
+    content: null,
+    deliveryMode: 'DIRECT',
+    ackFor,
+  };
+}
