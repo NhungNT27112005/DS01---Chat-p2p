@@ -11,6 +11,18 @@ import {
   createChatMessage,
   createAckMessage,
 } from '../shared/messages.js';
+import {
+  sendReliable,
+  acknowledgeMessage,
+  cancelPendingMessages,
+} from './services/reliable.js';
+
+const MESSAGE_STATUS_LABELS = {
+  SENDING: 'Đang gửi',
+  SENT: 'Đã gửi, chờ xác nhận',
+  RECEIVED: 'Đã nhận',
+  FAILED: 'Chưa xác nhận được',
+};
 
 export default function App() {
   const [connectionStatus, setConnectionStatus] =
@@ -125,6 +137,8 @@ export default function App() {
           return;
         }
 
+        acknowledgeMessage(message);
+
         setChatMessages((previous) =>
           previous.map((item) => {
             if (
@@ -141,6 +155,7 @@ export default function App() {
             return {
               ...item,
               status: 'RECEIVED',
+              error: null,
             };
           }),
         );
@@ -201,7 +216,29 @@ export default function App() {
       }
     }
 
-    return onMessage(handleIncomingMessage);
+    const stopMessage = onMessage(handleIncomingMessage);
+
+    return () => {
+      stopMessage();
+      cancelPendingMessages(currentPeer.peerId);
+
+      setChatMessages((previous) =>
+        previous.map((item) => {
+          if (
+            item.senderId !== currentPeer.peerId ||
+            !['SENDING', 'SENT'].includes(item.status)
+          ) {
+            return item;
+          }
+
+          return {
+            ...item,
+            status: 'FAILED',
+            error: 'Đã dừng theo dõi vì phiên peer kết thúc.',
+          };
+        }),
+      );
+    };
   }, [currentPeer]);
 
   function handleRegister() {
@@ -241,7 +278,32 @@ export default function App() {
     }
   }
 
-  function handleSendMessage(event) {
+  function updateMessageStatus(target, status, error = null) {
+    setChatMessages((previous) =>
+      previous.map((item) => {
+        const matches =
+          item.messageId === target.messageId &&
+          item.senderId === target.senderId &&
+          item.receiverId === target.receiverId &&
+          item.sessionId === target.sessionId;
+
+        if (!matches || item.status === 'RECEIVED') {
+          return item;
+        }
+
+        if (
+          status === 'SENT' &&
+          !['SENDING', 'SENT'].includes(item.status)
+        ) {
+          return item;
+        }
+
+        return { ...item, status, error };
+      }),
+    );
+  }
+
+  async function handleSendMessage(event) {
     event.preventDefault();
 
     const receiverId = selectedPeerId;
@@ -257,6 +319,8 @@ export default function App() {
       return;
     }
 
+    let message = null;
+
     try {
       const sequenceKey = JSON.stringify([
         currentPeer.peerId,
@@ -267,7 +331,7 @@ export default function App() {
       const sequence =
         (sequenceRef.current.get(sequenceKey) || 0) + 1;
 
-      const message = createChatMessage({
+      message = createChatMessage({
         senderId: currentPeer.peerId,
         receiverId,
         sessionId: connection.sessionId,
@@ -275,15 +339,14 @@ export default function App() {
         content,
       });
 
-      sendWebRTC(receiverId, message);
-
       sequenceRef.current.set(sequenceKey, sequence);
 
       setChatMessages((previous) => [
         ...previous,
         {
           ...message,
-          status: 'SENT',
+          status: 'SENDING',
+          error: null,
         },
       ]);
 
@@ -294,13 +357,41 @@ export default function App() {
 
       setSendFeedback((previous) => ({
         ...previous,
-        [receiverId]: 'Đã đưa tin vào DataChannel.',
+        [receiverId]: '',
       }));
+
+      await sendReliable(
+        message,
+        async (packet) => {
+          const result = await sendWebRTC(
+            packet.receiverId,
+            packet,
+          );
+
+          updateMessageStatus(packet, 'SENT');
+
+          return result;
+        },
+        (failedMessage, reason) => {
+          updateMessageStatus(
+            failedMessage,
+            'FAILED',
+            reason,
+          );
+        },
+      );
     } catch (error) {
-      setSendFeedback((previous) => ({
-        ...previous,
-        [receiverId]: error?.message || 'Không thể gửi tin nhắn.',
-      }));
+      const reason =
+        error?.message || 'Không thể gửi tin nhắn.';
+
+      if (message) {
+        updateMessageStatus(message, 'FAILED', reason);
+      } else {
+        setSendFeedback((previous) => ({
+          ...previous,
+          [receiverId]: reason,
+        }));
+      }
     }
   }
 
@@ -434,9 +525,12 @@ export default function App() {
                 {message.senderId === currentPeer?.peerId && (
                   <small>
                     {' — '}
-                    {message.status === 'RECEIVED'
-                      ? 'Đã nhận'
-                      : 'Đã gửi, chờ xác nhận'}
+                    {MESSAGE_STATUS_LABELS[message.status] ||
+                      'Đang chờ xác nhận'}
+
+                    {message.status === 'FAILED' && message.error && (
+                      <span> ({message.error})</span>
+                    )}
                   </small>
                 )}
               </li>
