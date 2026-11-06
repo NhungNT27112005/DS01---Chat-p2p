@@ -108,3 +108,83 @@ async function handleAckTimeout(
     );
   });
 }
+
+export async function sendReliable(
+  message,
+  sendPacket,
+  onFailed,
+) {
+  const ids = [
+    message?.senderId,
+    message?.receiverId,
+    message?.sessionId,
+    message?.messageId,
+  ];
+
+  if (
+    message?.version !== 1 ||
+    !['CHAT_MESSAGE', 'GROUP_MESSAGE'].includes(message.type) ||
+    ids.some(
+      (id) => typeof id !== 'string' || !id.trim(),
+    )
+  ) {
+    throw new Error('Gói tin chờ ACK không hợp lệ.');
+  }
+
+  if (
+    typeof sendPacket !== 'function' ||
+    typeof onFailed !== 'function'
+  ) {
+    throw new Error('Phải cung cấp hàm gửi và hàm báo thất bại.');
+  }
+
+  const pending = registerPendingMessage(message);
+
+  let accepted = false;
+  let deliveryMode = null;
+
+  try {
+    const result = await sendPacket({ ...pending.message });
+
+    accepted = true;
+    deliveryMode = result?.deliveryMode || null;
+  } catch (error) {
+    if (pendingMessages.get(pending.key) === pending) {
+      pending.lastError =
+        error?.message || 'Không thể gửi tin nhắn.';
+    }
+  }
+
+  startAckTimer(pending, () => {
+    handleAckTimeout(pending, sendPacket, onFailed).catch(
+      (error) =>
+        console.error('[reliable] Lỗi xử lý timeout:', error),
+    );
+  });
+
+  return { accepted, deliveryMode };
+}
+
+export function acknowledgeMessage(ack) {
+  if (ack?.type !== 'ACK') {
+    return false;
+  }
+
+  const key = getMessageKey({
+    senderId: ack.receiverId,
+    receiverId: ack.senderId,
+    sessionId: ack.sessionId,
+    messageId: ack.ackFor,
+  });
+
+  const pending = pendingMessages.get(key);
+
+  if (
+    !pending ||
+    pending.message.groupId !== ack.groupId
+  ) {
+    return false;
+  }
+
+  return removePendingMessage(pending);
+}
