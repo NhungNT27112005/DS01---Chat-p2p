@@ -188,3 +188,25 @@ export function acknowledgeMessage(ack) {
 
   return removePendingMessage(pending);
 }
+
+export function cancelPendingMessages(senderId) {
+  if (
+    typeof senderId !== 'string' ||
+    !senderId.trim()
+  ) {
+    return 0;
+  }
+
+  let cancelled = 0;
+
+  for (const pending of pendingMessages.values()) {
+    if (
+      pending.message.senderId === senderId &&
+      removePendingMessage(pending)
+    ) {
+      cancelled += 1;
+    }
+  }
+
+  return cancelled;
+}
