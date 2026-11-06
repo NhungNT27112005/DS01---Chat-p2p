@@ -24,6 +24,7 @@ function registerPendingMessage(message) {
     message: { ...message },
     retries: 0,
     timer: null,
+    lastError: null,
   };
 
   pendingMessages.set(key, pending);
@@ -47,4 +48,63 @@ function startAckTimer(pending, onTimeout) {
 
     onTimeout(pending);
   }, ACK_TIMEOUT_MS);
+}
+
+function removePendingMessage(pending) {
+  if (pendingMessages.get(pending.key) !== pending) {
+    return false;
+  }
+
+  clearTimeout(pending.timer);
+  pending.timer = null;
+
+  pendingMessages.delete(pending.key);
+
+  return true;
+}
+
+async function handleAckTimeout(
+  pending,
+  sendPacket,
+  onFailed,
+) {
+  if (pendingMessages.get(pending.key) !== pending) {
+    return;
+  }
+
+  if (pending.retries >= MAX_RETRIES) {
+    if (removePendingMessage(pending)) {
+      onFailed(
+        pending.message,
+        pending.lastError ||
+          `Không nhận được ACK sau ${MAX_RETRIES} lần gửi lại.`,
+      );
+    }
+
+    return;
+  }
+
+  pending.retries += 1;
+
+  let lastError = null;
+
+  try {
+    await sendPacket({ ...pending.message });
+  } catch (error) {
+    lastError =
+      error?.message || 'Không thể gửi lại tin nhắn.';
+  }
+
+  if (pendingMessages.get(pending.key) !== pending) {
+    return;
+  }
+
+  pending.lastError = lastError;
+
+  startAckTimer(pending, () => {
+    handleAckTimeout(pending, sendPacket, onFailed).catch(
+      (error) =>
+        console.error('[reliable] Lỗi xử lý timeout:', error),
+    );
+  });
 }
