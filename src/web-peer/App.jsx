@@ -6,6 +6,7 @@ import {
   onMessage,
   connect as connectWebRTC,
   send as sendWebRTC,
+  closeAll as closeAllWebRTC,
 } from './services/webrtc.js';
 import {
   createChatMessage,
@@ -100,10 +101,15 @@ export default function App() {
       stopWebRTCState();
       stopWebRTC();
 
+      closeAllWebRTC('Ứng dụng đã dừng.');
+
       signalingSocket.off('connect', handleConnect);
       signalingSocket.off('disconnect', handleDisconnect);
       signalingSocket.off('connect_error', handleConnectError);
-      signalingSocket.off('peer:register:result', handleRegisterResult);
+      signalingSocket.off(
+        'peer:register:result',
+        handleRegisterResult,
+      );
       signalingSocket.off('peers:list', handlePeerList);
 
       signalingSocket.disconnect();
