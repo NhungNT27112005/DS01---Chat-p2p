@@ -153,7 +153,11 @@ function bindDataChannel(connection, dataChannel) {
       return;
     }
 
-    emitState(connection, 'CLOSED', 'DataChannel đã đóng.');
+    close(
+      connection.peerId,
+      'DataChannel đã đóng.',
+      false,
+    );
   };
 
   dataChannel.onerror = (event) => {
