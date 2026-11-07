@@ -5,18 +5,35 @@ import {
   onOffer,
   onAnswer,
   onIceCandidate,
+  onWebRTCError,
 } from './signaling.js';
+import { MAX_PACKET_BYTES } from '../../shared/protocol.js';
 
 const connections = new Map();
 const stateListeners = new Set();
 const messageListeners = new Set();
+const earlyCandidates = new Map();
+const retiredSessions = new Set();
+let rtcConfiguration = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
+let setupTimeoutMs = 10000;
+export function configureWebRTC(options = {}) {
+  if (options.iceServers) rtcConfiguration = { iceServers: options.iceServers };
+  if (options.setupTimeoutMs > 0) setupTimeoutMs = options.setupTimeoutMs;
+}
+try {
+  if (import.meta.env?.VITE_ICE_SERVERS) configureWebRTC({ iceServers: JSON.parse(import.meta.env.VITE_ICE_SERVERS) });
+} catch { console.error('[webrtc] VITE_ICE_SERVERS không phải JSON hợp lệ.'); }
+const sessionKey = (peerId, sessionId) => JSON.stringify([peerId, sessionId]);
+function failConnection(connection, reason) {
+  if (disposeConnection(connection)) emitState(connection, 'FAILED', reason);
+}
 
 function createPeerConnection(peerId, sessionId) {
   if (connections.has(peerId)) {
     throw new Error('Đã có kết nối WebRTC với peer này.');
   }
 
-  const peerConnection = new RTCPeerConnection();
+  const peerConnection = new RTCPeerConnection(rtcConfiguration);
 
   const connection = {
     peerId,
@@ -24,6 +41,8 @@ function createPeerConnection(peerId, sessionId) {
     peerConnection,
     dataChannel: null,
     pendingCandidates: [],
+    setupTimer: null,
+    disconnectTimer: null,
   };
 
   peerConnection.onicecandidate = (event) => {
@@ -42,15 +61,12 @@ function createPeerConnection(peerId, sessionId) {
         event.candidate.toJSON(),
       );
     } catch (error) {
-      emitState(
-        connection,
-        'FAILED',
-        error?.message || 'Không thể gửi ICE candidate.',
-      );
+      failConnection(connection, error?.message || 'Không thể gửi ICE candidate.');
     }
   };
 
   peerConnection.ondatachannel = (event) => {
+    if (connections.get(peerId) !== connection) { event.channel.close(); return; }
     if (connection.dataChannel) {
       event.channel.close();
       return;
@@ -65,19 +81,26 @@ function createPeerConnection(peerId, sessionId) {
     }
 
     if (peerConnection.connectionState === 'failed') {
-      if (!disposeConnection(connection)) {
-        return;
-      }
-
-      emitState(
-        connection,
-        'FAILED',
-        'Kết nối WebRTC gặp sự cố.',
-      );
+      failConnection(connection, 'Kết nối WebRTC gặp sự cố.');
+    } else if (peerConnection.connectionState === 'disconnected') {
+      emitState(connection, 'DISCONNECTED', 'Đang chờ kết nối phục hồi (5 giây).');
+      if (!connection.disconnectTimer) connection.disconnectTimer = setTimeout(() => {
+        if (connections.get(peerId) === connection && peerConnection.connectionState === 'disconnected') failConnection(connection, 'Mất kết nối quá 5 giây.');
+      }, 5000);
+    } else if (peerConnection.connectionState === 'connected') {
+      clearTimeout(connection.disconnectTimer);
+      connection.disconnectTimer = null;
+      if (connection.dataChannel?.readyState === 'open') emitState(connection, 'DIRECT_READY');
+    } else if (peerConnection.connectionState === 'closed') {
+      close(peerId, 'PeerConnection đã đóng.', false);
     }
   };
 
   connections.set(peerId, connection);
+  connection.setupTimer = setTimeout(() => failConnection(connection, 'Hết thời gian chờ kết nối WebRTC.'), setupTimeoutMs);
+  const earlyKey = sessionKey(peerId, sessionId);
+  const buffered = earlyCandidates.get(earlyKey);
+  if (buffered) { clearTimeout(buffered.timer); connection.pendingCandidates.push(...buffered.candidates); earlyCandidates.delete(earlyKey); }
 
   return connection;
 }
@@ -110,6 +133,10 @@ function emitState(
   reason = null,
   intentional = false,
 ) {
+  if (connection.state === state && connection.reason === reason) return;
+  connection.state = state;
+  connection.reason = reason;
+  if (state === 'DIRECT_READY') { clearTimeout(connection.setupTimer); connection.setupTimer = null; }
   const event = {
     peerId: connection.peerId,
     sessionId: connection.sessionId,
@@ -119,7 +146,7 @@ function emitState(
   };
 
   for (const handler of stateListeners) {
-    handler(event);
+    try { handler(event); } catch (error) { console.error('[webrtc] state listener:', error); }
   }
 }
 
@@ -138,6 +165,7 @@ function bindDataChannel(connection, dataChannel) {
     if (typeof event.data !== 'string') {
       return;
     }
+    if (new TextEncoder().encode(event.data).length > MAX_PACKET_BYTES) return;
 
     let message;
 
@@ -186,7 +214,7 @@ function bindDataChannel(connection, dataChannel) {
     const reason =
       event.error?.message || 'DataChannel gặp lỗi.';
 
-    emitState(connection, 'FAILED', reason);
+    failConnection(connection, reason);
   };
 }
 
@@ -206,7 +234,7 @@ function emitMessage(connection, message) {
   };
 
   for (const handler of messageListeners) {
-    handler(event);
+    try { handler(event); } catch (error) { console.error('[webrtc] message listener:', error); }
   }
 }
 
@@ -232,6 +260,8 @@ export function send(peerId, message) {
   }
 
   const data = JSON.stringify(message);
+  if (new TextEncoder().encode(data).length > MAX_PACKET_BYTES) throw new Error('Gói tin quá lớn.');
+  if (dataChannel.bufferedAmount > 1024 * 1024) throw new Error('DataChannel đang đầy, sẽ thử lại.');
 
   dataChannel.send(data);
 
@@ -246,6 +276,10 @@ function disposeConnection(connection) {
   }
 
   connections.delete(connection.peerId);
+  clearTimeout(connection.setupTimer);
+  clearTimeout(connection.disconnectTimer);
+  retiredSessions.add(sessionKey(connection.peerId, connection.sessionId));
+  if (retiredSessions.size > 256) retiredSessions.delete(retiredSessions.values().next().value);
 
   const { dataChannel, peerConnection } = connection;
 
@@ -310,6 +344,12 @@ async function handleRemoteIceCandidate(data) {
   const connection = connections.get(data?.senderId);
 
   if (!connection || connection.sessionId !== data?.sessionId) {
+    if (typeof data?.senderId !== 'string' || typeof data?.sessionId !== 'string' || typeof data?.candidate?.candidate !== 'string') return;
+    const key = sessionKey(data.senderId, data.sessionId);
+    if (retiredSessions.has(key)) return;
+    if (!earlyCandidates.has(key) && earlyCandidates.size < 100) earlyCandidates.set(key, { candidates: [], timer: setTimeout(() => earlyCandidates.delete(key), setupTimeoutMs) });
+    const buffer = earlyCandidates.get(key);
+    if (buffer && buffer.candidates.length < 128) buffer.candidates.push(data.candidate);
     return;
   }
 
@@ -330,6 +370,7 @@ async function handleRemoteIceCandidate(data) {
     !peerConnection.remoteDescription ||
     connection.pendingCandidates.length > 0
   ) {
+    if (connection.pendingCandidates.length >= 128) { failConnection(connection, 'Quá nhiều ICE candidate đang chờ.'); return; }
     connection.pendingCandidates.push(candidate);
     return;
   }
@@ -341,11 +382,7 @@ async function handleRemoteIceCandidate(data) {
       return;
     }
 
-    emitState(
-      connection,
-      'FAILED',
-      error?.message || 'Không thể thêm ICE candidate.',
-    );
+    failConnection(connection, error?.message || 'Không thể thêm ICE candidate.');
   }
 }
 
@@ -477,17 +514,17 @@ async function handleRemoteAnswer(data) {
       return;
     }
 
-    emitState(
-      connection,
-      'FAILED',
-      error?.message || 'Không thể áp dụng answer.',
-    );
+    failConnection(connection, error?.message || 'Không thể áp dụng answer.');
   }
 }
 
 export function startWebRTC() {
   const stopOffer = onOffer(handleRemoteOffer);
   const stopAnswer = onAnswer(handleRemoteAnswer);
+  const stopError = onWebRTCError(data => {
+    const connection = connections.get(data?.receiverId);
+    if (connection?.sessionId === data?.sessionId) failConnection(connection, data.message || 'Lỗi signaling.');
+  });
 
   const stopIceCandidate = onIceCandidate(
     handleRemoteIceCandidate,
@@ -497,6 +534,9 @@ export function startWebRTC() {
     stopOffer();
     stopAnswer();
     stopIceCandidate();
+    stopError();
+    for (const buffer of earlyCandidates.values()) clearTimeout(buffer.timer);
+    earlyCandidates.clear();
   };
 }
 
@@ -517,8 +557,14 @@ async function handleRemoteOffer(data) {
     return;
   }
 
-  if (connections.has(senderId)) {
-    return;
+  if (retiredSessions.has(sessionKey(senderId, sessionId))) return;
+  const existing = connections.get(senderId);
+  if (existing) {
+    if (existing.sessionId === sessionId) return;
+    // Simultaneous offers converge on the lexicographically smaller session.
+    // The waiting connect() follows the winning session for this peer.
+    if (existing.dataChannel?.readyState !== 'open' && existing.sessionId < sessionId) return;
+    disposeConnection(existing);
   }
 
   let connection = null;
@@ -538,10 +584,7 @@ async function handleRemoteOffer(data) {
     }
 
     if (connection) {
-      connections.delete(senderId);
-      connection.dataChannel?.close();
-      connection.peerConnection.close();
-      connection.pendingCandidates.length = 0;
+      disposeConnection(connection);
     }
 
     emitState(
@@ -552,7 +595,7 @@ async function handleRemoteOffer(data) {
   }
 }
 
-function waitForDirectReady(connection, timeoutMs = 10000) {
+function waitForDirectReady(connection, timeoutMs = setupTimeoutMs) {
   return new Promise((resolve, reject) => {
     let timer;
 
@@ -563,8 +606,7 @@ function waitForDirectReady(connection, timeoutMs = 10000) {
 
     const stopListening = onStateChange((event) => {
       if (
-        event.peerId !== connection.peerId ||
-        event.sessionId !== connection.sessionId
+        event.peerId !== connection.peerId
       ) {
         return;
       }
@@ -622,25 +664,23 @@ export async function connect(peerId, sessionId) {
   let connection = null;
 
   try {
-    connection = createPeerConnection(peerId, sessionId);
+    connection = existing || createPeerConnection(peerId, sessionId);
 
     emitState(connection, 'CONNECTING');
 
     await Promise.all([
       waitForDirectReady(connection),
-      createAndSendOffer(connection),
+      existing ? Promise.resolve() : createAndSendOffer(connection).catch(error => { if (connections.get(peerId) === connection) throw error; }),
     ]);
 
-    if (
-      connections.get(peerId) !== connection ||
-      connection.dataChannel?.readyState !== 'open'
-    ) {
+    const ready = connections.get(peerId);
+    if (ready?.dataChannel?.readyState !== 'open') {
       throw new Error('Kết nối WebRTC không còn sẵn sàng.');
     }
 
     return {
       peerId,
-      sessionId,
+      sessionId: ready.sessionId,
       deliveryMode: 'DIRECT',
     };
   } catch (error) {
@@ -648,10 +688,7 @@ export async function connect(peerId, sessionId) {
       connection &&
       connections.get(peerId) === connection
     ) {
-      connections.delete(peerId);
-      connection.dataChannel?.close();
-      connection.peerConnection.close();
-      connection.pendingCandidates.length = 0;
+      disposeConnection(connection);
 
       emitState(
         connection,

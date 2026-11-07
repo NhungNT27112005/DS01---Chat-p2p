@@ -2,10 +2,11 @@ import { io } from 'socket.io-client';
 import { WEBRTC_EVENTS } from '../../shared/webrtc-events.js';
 
 const SIGNAL_URL =
-  import.meta.env.VITE_SIGNAL_URL || 'http://localhost:4001';
+  import.meta.env?.VITE_SIGNAL_URL || (import.meta.env?.PROD ? globalThis.location?.origin : 'http://localhost:4001');
 
 export const signalingSocket = io(SIGNAL_URL, {
   autoConnect: false,
+  path: import.meta.env?.VITE_SIGNAL_PATH || '/socket.io',
 });
 
 export function registerPeer(peerId, displayName) {
@@ -85,4 +86,14 @@ export function onWebRTCError(handler) {
   return () => {
     signalingSocket.off(WEBRTC_EVENTS.ERROR, handler);
   };
+}
+
+export function request(event, data, timeout = 4000) {
+  if (!signalingSocket.connected) return Promise.reject(new Error('Signaling đang offline.'));
+  return new Promise((resolve, reject) => {
+    signalingSocket.timeout(timeout).emit(event, data, (error, result) => {
+      if (error || !result?.ok) reject(new Error(result?.message || 'Hết thời gian chờ signaling.'));
+      else resolve(result);
+    });
+  });
 }

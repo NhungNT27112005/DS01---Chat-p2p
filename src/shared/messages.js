@@ -1,3 +1,5 @@
+import { MAX_CONTENT_LENGTH } from './protocol.js';
+
 export function createChatMessage({
   senderId,
   receiverId,
@@ -21,8 +23,8 @@ export function createChatMessage({
     throw new Error('Số thứ tự tin nhắn phải là số nguyên dương.');
   }
 
-  if (typeof content !== 'string' || !content.trim()) {
-    throw new Error('Nội dung tin nhắn không được để trống.');
+  if (typeof content !== 'string' || !content.trim() || content.length > MAX_CONTENT_LENGTH) {
+    throw new Error(`Tin nhắn phải có nội dung và không quá ${MAX_CONTENT_LENGTH} ký tự.`);
   }
 
   return {
@@ -45,6 +47,7 @@ export function createAckMessage({
   receiverId,
   sessionId,
   ackFor,
+  groupId = null,
 }) {
   const ids = [
     senderId,
@@ -70,11 +73,17 @@ export function createAckMessage({
     sessionId,
     senderId,
     receiverId,
-    groupId: null,
+    groupId,
     sequence: null,
     timestamp: Date.now(),
     content: null,
     deliveryMode: 'DIRECT',
     ackFor,
   };
+}
+
+export function createGroupMessage(options) {
+  const message = createChatMessage(options);
+  if (typeof options.groupId !== 'string' || !options.groupId.trim()) throw new Error('Group ID không hợp lệ.');
+  return { ...message, type: 'GROUP_MESSAGE', groupId: options.groupId, ...(options.messageId ? { messageId: options.messageId } : {}) };
 }

@@ -1,425 +1,58 @@
-import { useEffect, useRef, useState } from 'react';
-import { signalingSocket, registerPeer } from './services/signaling.js';
-import {
-  startWebRTC,
-  onStateChange,
-  onMessage,
-  connect as connectWebRTC,
-  send as sendWebRTC,
-  closeAll as closeAllWebRTC,
-} from './services/webrtc.js';
-import {
-  createChatMessage,
-  createAckMessage,
-} from '../shared/messages.js';
-import {
-  sendReliable,
-  acknowledgeMessage,
-  cancelPendingMessages,
-} from './services/reliable.js';
+import { useEffect, useState, useSyncExternalStore } from 'react';
+import { chatClient } from './services/chat.js';
+import GroupChat from './components/GroupChat.jsx';
 
 const MESSAGE_STATUS_LABELS = {
-  SENDING: 'Đang gửi',
-  SENT: 'Đã gửi, chờ xác nhận',
-  RECEIVED: 'Đã nhận',
-  FAILED: 'Chưa xác nhận được',
+  SENDING: 'Đang gửi', SENT: 'Đã gửi, chờ xác nhận', FORWARDED: 'Đã chuyển tiếp, chờ xác nhận',
+  RECEIVED: 'Đã nhận', FAILED: 'Chưa xác nhận được',
 };
 
 export default function App() {
-  const [connectionStatus, setConnectionStatus] =
-    useState('Đang kết nối signaling...');
-  const [peerId, setPeerId] = useState('');
-  const [displayName, setDisplayName] = useState('');
-  const [registrationStatus, setRegistrationStatus] = useState('');
-  const [onlinePeers, setOnlinePeers] = useState([]);
-  const [currentPeer, setCurrentPeer] = useState(null);
+  const state = useSyncExternalStore(chatClient.subscribe, chatClient.getState);
+  const identity = chatClient.getIdentity();
+  const [peerId, setPeerId] = useState(identity?.peerId || '');
+  const [displayName, setDisplayName] = useState(identity?.displayName || '');
   const [selectedPeerId, setSelectedPeerId] = useState('');
-  const [webrtcStates, setWebrtcStates] = useState({});
   const [webrtcErrors, setWebrtcErrors] = useState({});
   const [drafts, setDrafts] = useState({});
   const [sendFeedback, setSendFeedback] = useState({});
-  const [chatMessages, setChatMessages] = useState([]);
-  const sequenceRef = useRef(new Map());
-
-  useEffect(() => {
-    function handleWebRTCState(event) {
-      setWebrtcStates((previous) => ({
-        ...previous,
-        [event.peerId]: event,
-      }));
-    }
-
-    function handleConnect() {
-      setConnectionStatus('Đã kết nối signaling');
-      setRegistrationStatus('');
-    }
-
-    function handleDisconnect() {
-      setConnectionStatus('Mất kết nối signaling');
-      setRegistrationStatus('');
-      setOnlinePeers([]);
-      setCurrentPeer(null);
-      setSelectedPeerId('');
-    }
-
-    function handleConnectError(error) {
-      setConnectionStatus(`Lỗi kết nối: ${error.message}`);
-    }
-
-    function handleRegisterResult(result) {
-      setRegistrationStatus(result.message);
-
-      if (result.ok) {
-        setCurrentPeer(result.peer);
-      }
-    }
-
-    function handlePeerList(peerList) {
-      setOnlinePeers(peerList);
-
-      setSelectedPeerId((previousId) => {
-        const stillOnline = peerList.some(
-          (peer) => peer.peerId === previousId
-        );
-
-        return stillOnline ? previousId : '';
-      });
-    }
-
-    signalingSocket.on('connect', handleConnect);
-    signalingSocket.on('disconnect', handleDisconnect);
-    signalingSocket.on('connect_error', handleConnectError);
-    signalingSocket.on('peer:register:result', handleRegisterResult);
-    signalingSocket.on('peers:list', handlePeerList);
-
-    const stopWebRTCState = onStateChange(handleWebRTCState);
-    const stopWebRTC = startWebRTC();
-
-    signalingSocket.connect();
-
-    return () => {
-      stopWebRTCState();
-      stopWebRTC();
-
-      closeAllWebRTC('Ứng dụng đã dừng.');
-
-      signalingSocket.off('connect', handleConnect);
-      signalingSocket.off('disconnect', handleDisconnect);
-      signalingSocket.off('connect_error', handleConnectError);
-      signalingSocket.off(
-        'peer:register:result',
-        handleRegisterResult,
-      );
-      signalingSocket.off('peers:list', handlePeerList);
-
-      signalingSocket.disconnect();
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!currentPeer) {
-      return;
-    }
-
-    function handleIncomingMessage(event) {
-      const { peerId, sessionId, message } = event;
-
-      if (message.type === 'ACK') {
-        if (
-          message.version !== 1 ||
-          typeof message.messageId !== 'string' ||
-          !message.messageId.trim() ||
-          typeof message.ackFor !== 'string' ||
-          !message.ackFor.trim() ||
-          message.senderId !== peerId ||
-          message.receiverId !== currentPeer.peerId ||
-          message.sessionId !== sessionId ||
-          message.groupId !== null ||
-          message.sequence !== null ||
-          message.content !== null ||
-          !Number.isSafeInteger(message.timestamp) ||
-          message.timestamp < 0
-        ) {
-          return;
-        }
-
-        acknowledgeMessage(message);
-
-        setChatMessages((previous) =>
-          previous.map((item) => {
-            if (
-              item.type !== 'CHAT_MESSAGE' ||
-              item.messageId !== message.ackFor ||
-              item.senderId !== currentPeer.peerId ||
-              item.receiverId !== peerId ||
-              item.sessionId !== sessionId ||
-              item.status === 'RECEIVED'
-            ) {
-              return item;
-            }
-
-            return {
-              ...item,
-              status: 'RECEIVED',
-              error: null,
-            };
-          }),
-        );
-
-        return;
-      }
-
-      if (
-        message.version !== 1 ||
-        message.type !== 'CHAT_MESSAGE' ||
-        typeof message.messageId !== 'string' ||
-        !message.messageId.trim() ||
-        message.senderId !== peerId ||
-        message.receiverId !== currentPeer.peerId ||
-        message.sessionId !== sessionId ||
-        message.groupId !== null ||
-        !Number.isSafeInteger(message.sequence) ||
-        message.sequence < 1 ||
-        !Number.isSafeInteger(message.timestamp) ||
-        message.timestamp < 0 ||
-        typeof message.content !== 'string' ||
-        !message.content.trim()
-      ) {
-        return;
-      }
-
-      setChatMessages((previous) => {
-        const alreadyExists = previous.some(
-          (item) =>
-            item.senderId === message.senderId &&
-            item.messageId === message.messageId,
-        );
-
-        if (alreadyExists) {
-          return previous;
-        }
-
-        return [...previous, message];
-      });
-
-      try {
-        const ack = createAckMessage({
-          senderId: currentPeer.peerId,
-          receiverId: peerId,
-          sessionId,
-          ackFor: message.messageId,
-        });
-
-        sendWebRTC(peerId, ack);
-      } catch (error) {
-        setSendFeedback((previous) => ({
-          ...previous,
-          [peerId]:
-            `Không thể gửi ACK: ${
-              error?.message || 'Lỗi không xác định.'
-            }`,
-        }));
-      }
-    }
-
-    const stopMessage = onMessage(handleIncomingMessage);
-
-    return () => {
-      stopMessage();
-      cancelPendingMessages(currentPeer.peerId);
-
-      closeAllWebRTC('Phiên peer đã kết thúc.');
-
-      setChatMessages((previous) =>
-        previous.map((item) => {
-          if (
-            item.senderId !== currentPeer.peerId ||
-            !['SENDING', 'SENT'].includes(item.status)
-          ) {
-            return item;
-          }
-
-          return {
-            ...item,
-            status: 'FAILED',
-            error: 'Đã dừng theo dõi vì phiên peer kết thúc.',
-          };
-        }),
-      );
-    };
-  }, [currentPeer]);
-
+  const { connectionStatus, registrationStatus, currentPeer } = state;
+  const onlinePeers = state.onlinePeers;
+  const webrtcStates = state.routes;
+  const ready = ['DIRECT_READY', 'RELAY_READY'].includes(webrtcStates[selectedPeerId]?.state);
+  useEffect(() => { chatClient.start(); return () => chatClient.stop(); }, []);
   function handleRegister() {
-    if (!signalingSocket.connected) {
-      return;
-    }
-
-    registerPeer(peerId, displayName);
+    try { chatClient.register(peerId, displayName); }
+    catch (error) { setSendFeedback(previous => ({ ...previous, global: error.message })); }
   }
-
   async function handleConnectWebRTC() {
     const receiverId = selectedPeerId;
-
-    if (
-      !currentPeer ||
-      !receiverId ||
-      !signalingSocket.connected
-    ) {
-      return;
-    }
-
-    setWebrtcErrors((previous) => ({
-      ...previous,
-      [receiverId]: '',
-    }));
-
-    try {
-      const sessionId = crypto.randomUUID();
-
-      await connectWebRTC(receiverId, sessionId);
-    } catch (error) {
-      setWebrtcErrors((previous) => ({
-        ...previous,
-        [receiverId]:
-          error?.message || 'Không thể kết nối WebRTC.',
-      }));
-    }
+    setWebrtcErrors(previous => ({ ...previous, [receiverId]: '' }));
+    try { await chatClient.connect(receiverId); }
+    catch (error) { setWebrtcErrors(previous => ({ ...previous, [receiverId]: error.message })); }
   }
-
-  function updateMessageStatus(target, status, error = null) {
-    setChatMessages((previous) =>
-      previous.map((item) => {
-        const matches =
-          item.messageId === target.messageId &&
-          item.senderId === target.senderId &&
-          item.receiverId === target.receiverId &&
-          item.sessionId === target.sessionId;
-
-        if (!matches || item.status === 'RECEIVED') {
-          return item;
-        }
-
-        if (
-          status === 'SENT' &&
-          !['SENDING', 'SENT'].includes(item.status)
-        ) {
-          return item;
-        }
-
-        return { ...item, status, error };
-      }),
-    );
-  }
-
-  async function handleSendMessage(event) {
+  function handleSendMessage(event) {
     event.preventDefault();
-
-    const receiverId = selectedPeerId;
-    const connection = webrtcStates[receiverId];
-    const content = drafts[receiverId] || '';
-
-    if (
-      !currentPeer ||
-      !receiverId ||
-      connection?.state !== 'DIRECT_READY' ||
-      !content.trim()
-    ) {
-      return;
-    }
-
-    let message = null;
-
     try {
-      const sequenceKey = JSON.stringify([
-        currentPeer.peerId,
-        receiverId,
-        connection.sessionId,
-      ]);
-
-      const sequence =
-        (sequenceRef.current.get(sequenceKey) || 0) + 1;
-
-      message = createChatMessage({
-        senderId: currentPeer.peerId,
-        receiverId,
-        sessionId: connection.sessionId,
-        sequence,
-        content,
-      });
-
-      sequenceRef.current.set(sequenceKey, sequence);
-
-      setChatMessages((previous) => [
-        ...previous,
-        {
-          ...message,
-          status: 'SENDING',
-          error: null,
-        },
-      ]);
-
-      setDrafts((previous) => ({
-        ...previous,
-        [receiverId]: '',
-      }));
-
-      setSendFeedback((previous) => ({
-        ...previous,
-        [receiverId]: '',
-      }));
-
-      await sendReliable(
-        message,
-        async (packet) => {
-          const result = await sendWebRTC(
-            packet.receiverId,
-            packet,
-          );
-
-          updateMessageStatus(packet, 'SENT');
-
-          return result;
-        },
-        (failedMessage, reason) => {
-          updateMessageStatus(
-            failedMessage,
-            'FAILED',
-            reason,
-          );
-        },
-      );
-    } catch (error) {
-      const reason =
-        error?.message || 'Không thể gửi tin nhắn.';
-
-      if (message) {
-        updateMessageStatus(message, 'FAILED', reason);
-      } else {
-        setSendFeedback((previous) => ({
-          ...previous,
-          [receiverId]: reason,
-        }));
-      }
-    }
+      chatClient.sendPrivate(selectedPeerId, drafts[selectedPeerId] || '');
+      setDrafts(previous => ({ ...previous, [selectedPeerId]: '' }));
+      setSendFeedback(previous => ({ ...previous, [selectedPeerId]: '' }));
+    } catch (error) { setSendFeedback(previous => ({ ...previous, [selectedPeerId]: error.message })); }
   }
-
-  const conversationMessages = chatMessages.filter(
-    (message) =>
-      (
-        message.senderId === currentPeer?.peerId &&
-        message.receiverId === selectedPeerId
-      ) ||
-      (
-        message.senderId === selectedPeerId &&
-        message.receiverId === currentPeer?.peerId
-      ),
-  );
-
+  const conversationMessages = state.messages.filter(message => message.type === 'CHAT_MESSAGE' && (
+    (message.senderId === currentPeer?.peerId && message.receiverId === selectedPeerId) ||
+    (message.senderId === selectedPeerId && message.receiverId === currentPeer?.peerId)
+  )).map(message => ({ ...message, status: message.deliveries?.[selectedPeerId]?.status,
+    error: message.deliveries?.[selectedPeerId]?.error,
+    deliveryMode: message.deliveries?.[selectedPeerId]?.deliveryMode || message.deliveryMode }));
   return (
     <main>
-      <p className="label">DS01 · GIAI ĐOẠN 1</p>
+      <p className="label">DS01 · DIRECT / RELAY</p>
       <h1>Chat P2P bằng JavaScript</h1>
       <p>Trạng thái: {connectionStatus}</p>
+      <p>Relay: {state.relayReady ? 'Sẵn sàng' : 'Chưa sẵn sàng'}</p>
+      {state.error && <p role="alert">{state.error} <button type="button" onClick={chatClient.clearError}>Đóng</button></p>}
+      {sendFeedback.global && <p role="alert">{sendFeedback.global}</p>}
       {registrationStatus && <p>{registrationStatus}</p>}
       {currentPeer && (
         <p>
@@ -453,7 +86,7 @@ export default function App() {
         type="button"
         onClick={handleRegister}
         disabled={
-          !signalingSocket.connected ||
+          !connectionStatus.startsWith('Đã kết nối') || !!currentPeer ||
           !peerId.trim() ||
           !displayName.trim()
         }
@@ -484,6 +117,13 @@ export default function App() {
         ))}
       </ul>
 
+      {currentPeer && <div>
+        <h2>Lịch sử cá nhân</h2>
+        {[...new Set(state.messages.filter(message => message.type === 'CHAT_MESSAGE').map(message => message.senderId === currentPeer.peerId ? message.receiverId : message.senderId))].map(id =>
+          <button type="button" key={id} onClick={() => setSelectedPeerId(id)}>{id}{onlinePeers.some(peer => peer.peerId === id) ? '' : ' (OFFLINE)'}</button>
+        )}
+      </div>}
+
       {selectedPeerId && (
         <section>
           <p>Peer muốn chat: {selectedPeerId}</p>
@@ -498,7 +138,8 @@ export default function App() {
             onClick={handleConnectWebRTC}
             disabled={
               !currentPeer ||
-              !signalingSocket.connected ||
+              !onlinePeers.some(peer => peer.peerId === selectedPeerId) ||
+              !connectionStatus.startsWith('Đã kết nối') ||
               webrtcStates[selectedPeerId]?.state === 'CONNECTING' ||
               webrtcStates[selectedPeerId]?.state === 'DIRECT_READY'
             }
@@ -530,6 +171,7 @@ export default function App() {
                     : message.senderId}
                 </strong>
                 : {message.content}
+                <small> [{message.deliveryMode}]</small>
                 {message.senderId === currentPeer?.peerId && (
                   <small>
                     {' — '}
@@ -561,9 +203,10 @@ export default function App() {
                     }));
                   }}
                   disabled={
-                    webrtcStates[selectedPeerId]?.state !== 'DIRECT_READY'
+                    !ready
                   }
                   placeholder="Nhập tin nhắn..."
+                  maxLength={8000}
                 />
               </label>
             </p>
@@ -572,7 +215,7 @@ export default function App() {
               type="submit"
               disabled={
                 !currentPeer ||
-                webrtcStates[selectedPeerId]?.state !== 'DIRECT_READY' ||
+                !ready ||
                 !(drafts[selectedPeerId] || '').trim()
               }
             >
@@ -585,6 +228,7 @@ export default function App() {
           )}
         </section>
       )}
+      <GroupChat client={chatClient} state={state} statusLabels={MESSAGE_STATUS_LABELS} />
     </main>
   );
 }
