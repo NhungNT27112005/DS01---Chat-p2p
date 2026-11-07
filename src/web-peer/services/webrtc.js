@@ -59,6 +59,20 @@ function createPeerConnection(peerId, sessionId) {
     bindDataChannel(connection, event.channel);
   };
 
+  peerConnection.onconnectionstatechange = () => {
+    if (connections.get(peerId) !== connection) {
+      return;
+    }
+
+    if (peerConnection.connectionState === 'failed') {
+      emitState(
+        connection,
+        'FAILED',
+        'Kết nối WebRTC gặp sự cố.',
+      );
+    }
+  };
+
   connections.set(peerId, connection);
 
   return connection;
@@ -237,6 +251,7 @@ export function close(
 
   peerConnection.onicecandidate = null;
   peerConnection.ondatachannel = null;
+  peerConnection.onconnectionstatechange = null;
 
   if (dataChannel) {
     dataChannel.onopen = null;
