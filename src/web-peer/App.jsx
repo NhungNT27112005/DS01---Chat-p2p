@@ -228,6 +228,8 @@ export default function App() {
       stopMessage();
       cancelPendingMessages(currentPeer.peerId);
 
+      closeAllWebRTC('Phiên peer đã kết thúc.');
+
       setChatMessages((previous) =>
         previous.map((item) => {
           if (
