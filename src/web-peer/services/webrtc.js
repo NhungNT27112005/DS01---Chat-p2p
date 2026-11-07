@@ -65,6 +65,10 @@ function createPeerConnection(peerId, sessionId) {
     }
 
     if (peerConnection.connectionState === 'failed') {
+      if (!disposeConnection(connection)) {
+        return;
+      }
+
       emitState(
         connection,
         'FAILED',
@@ -234,18 +238,14 @@ export function send(peerId, message) {
   return { deliveryMode: 'DIRECT' };
 }
 
-export function close(
-  peerId,
-  reason = 'Đã chủ động đóng kết nối WebRTC.',
-  intentional = true,
-) {
-  const connection = connections.get(peerId);
-
-  if (!connection) {
+function disposeConnection(connection) {
+  if (
+    connections.get(connection.peerId) !== connection
+  ) {
     return false;
   }
 
-  connections.delete(peerId);
+  connections.delete(connection.peerId);
 
   const { dataChannel, peerConnection } = connection;
 
@@ -264,6 +264,20 @@ export function close(
 
   peerConnection.close();
   connection.pendingCandidates.length = 0;
+
+  return true;
+}
+
+export function close(
+  peerId,
+  reason = 'Đã chủ động đóng kết nối WebRTC.',
+  intentional = true,
+) {
+  const connection = connections.get(peerId);
+
+  if (!connection || !disposeConnection(connection)) {
+    return false;
+  }
 
   emitState(connection, 'CLOSED', reason, intentional);
 
