@@ -251,6 +251,28 @@ export function close(
   return true;
 }
 
+export function closeAll(
+  reason = 'Đã chủ động đóng toàn bộ kết nối WebRTC.',
+  intentional = true,
+) {
+  const snapshot = [...connections.values()];
+  let closedCount = 0;
+
+  for (const connection of snapshot) {
+    if (
+      connections.get(connection.peerId) !== connection
+    ) {
+      continue;
+    }
+
+    if (close(connection.peerId, reason, intentional)) {
+      closedCount += 1;
+    }
+  }
+
+  return closedCount;
+}
+
 async function handleRemoteIceCandidate(data) {
   const connection = connections.get(data?.senderId);
 
