@@ -216,6 +216,41 @@ export function send(peerId, message) {
   return { deliveryMode: 'DIRECT' };
 }
 
+export function close(
+  peerId,
+  reason = 'Đã chủ động đóng kết nối WebRTC.',
+  intentional = true,
+) {
+  const connection = connections.get(peerId);
+
+  if (!connection) {
+    return false;
+  }
+
+  connections.delete(peerId);
+
+  const { dataChannel, peerConnection } = connection;
+
+  peerConnection.onicecandidate = null;
+  peerConnection.ondatachannel = null;
+
+  if (dataChannel) {
+    dataChannel.onopen = null;
+    dataChannel.onmessage = null;
+    dataChannel.onclose = null;
+    dataChannel.onerror = null;
+
+    dataChannel.close();
+  }
+
+  peerConnection.close();
+  connection.pendingCandidates.length = 0;
+
+  emitState(connection, 'CLOSED', reason, intentional);
+
+  return true;
+}
+
 async function handleRemoteIceCandidate(data) {
   const connection = connections.get(data?.senderId);
 
