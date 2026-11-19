@@ -17,7 +17,7 @@ export default function App() {
   const [drafts, setDrafts] = useState({});
   const [sendFeedback, setSendFeedback] = useState({});
   const { connectionStatus, registrationStatus, currentPeer } = state;
-  const onlinePeers = state.onlinePeers;
+  const onlinePeers = state.onlinePeers; // xem danh sách peer đang online
   const webrtcStates = state.routes;
   const ready = ['DIRECT_READY', 'RELAY_READY'].includes(webrtcStates[selectedPeerId]?.state);
   useEffect(() => { chatClient.start(); return () => chatClient.stop(); }, []);

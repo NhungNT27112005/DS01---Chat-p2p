@@ -156,7 +156,7 @@ function bindDataChannel(connection, dataChannel) {
   const isCurrent = () =>
     connections.get(connection.peerId) === connection &&
     connection.dataChannel === dataChannel;
-
+    
   dataChannel.onmessage = (event) => {
     if (!isCurrent()) {
       return;
@@ -339,7 +339,7 @@ export function closeAll(
 
   return closedCount;
 }
-
+// xử lý ICE candidate từ peer khác gửi tới
 async function handleRemoteIceCandidate(data) {
   const connection = connections.get(data?.senderId);
 
@@ -385,7 +385,7 @@ async function handleRemoteIceCandidate(data) {
     failConnection(connection, error?.message || 'Không thể thêm ICE candidate.');
   }
 }
-
+// xử lý ICE candidate từ peer khác gửi tới
 async function flushPendingCandidates(connection) {
   const peerConnection = connection.peerConnection;
 
@@ -435,7 +435,7 @@ async function createAndSendOffer(connection) {
     },
   );
 }
-
+// xử lý offer từ peer khác gửi tới rồi tạo và gửi answer ngược lại
 async function createAndSendAnswer(connection, offer) {
   const peerConnection = connection.peerConnection;
 
@@ -517,7 +517,7 @@ async function handleRemoteAnswer(data) {
     failConnection(connection, error?.message || 'Không thể áp dụng answer.');
   }
 }
-
+// bắt đầu lắng nghe các sự kiện WebRTC từ signaling server
 export function startWebRTC() {
   const stopOffer = onOffer(handleRemoteOffer);
   const stopAnswer = onAnswer(handleRemoteAnswer);
@@ -539,7 +539,7 @@ export function startWebRTC() {
     earlyCandidates.clear();
   };
 }
-
+// tiếp nhận offer từ peer khác gửi tới rồi tạo và gửi answer ngược lại
 async function handleRemoteOffer(data) {
   const senderId = data?.senderId;
   const sessionId = data?.sessionId;

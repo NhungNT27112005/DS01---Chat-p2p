@@ -15,7 +15,7 @@ export function registerPeer(peerId, displayName) {
     displayName,
   });
 }
-
+// Client gửi offer tới signaling server để chuyển tiếp tới peer nhận
 export function sendOffer(receiverId, sessionId, offer) {
   if (!signalingSocket.connected) {
     throw new Error('Chưa kết nối tới signaling server.');
@@ -27,7 +27,7 @@ export function sendOffer(receiverId, sessionId, offer) {
     offer,
   });
 }
-
+// gửi answer từ peer nhận tới signaling server để chuyển tiếp tới peer gửi
 export function sendAnswer(receiverId, sessionId, answer) {
   if (!signalingSocket.connected) {
     throw new Error('Chưa kết nối tới signaling server.');
@@ -39,7 +39,7 @@ export function sendAnswer(receiverId, sessionId, answer) {
     answer,
   });
 }
-
+// gửi ICE candidate từ peer này tới signaling server để chuyển tiếp tới peer kia
 export function sendIceCandidate(receiverId, sessionId, candidate) {
   if (candidate === null) {
     return;
