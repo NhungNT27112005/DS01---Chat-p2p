@@ -140,7 +140,7 @@ export function createReliableService({ ackTimeoutMs = 5000, maxRetries = 3, sen
 
     if (
       !validatePacket(message) || message?.version !== 1 ||
-      !['CHAT_MESSAGE', 'GROUP_MESSAGE'].includes(message.type) ||
+      message.type !== 'CHAT_MESSAGE' ||
       ids.some(
         (id) => typeof id !== 'string' || !id.trim(),
       )
@@ -196,10 +196,7 @@ export function createReliableService({ ackTimeoutMs = 5000, maxRetries = 3, sen
 
     const pending = pendingMessages.get(key);
 
-    if (
-      !pending ||
-      pending.message.groupId !== ack.groupId
-    ) {
+    if (!pending) {
       return false;
     }
 

@@ -6,7 +6,7 @@ Bộ cấu hình đã chuẩn bị cho bản local và triển khai sau này. Ch
 
 Docker Compose chạy signaling (4001 nội bộ), relay độc lập (4002 nội bộ), frontend nginx (8080), và tùy chọn Caddy HTTPS (80/443). Hai Socket.IO endpoint công khai là `/signal/socket.io` và `/relay/socket.io`; nginx ánh xạ chúng tới đúng server.
 
-`GROUP_FILE=/app/data/groups.json` nằm trong volume `groups` để giữ nhóm qua restart. Secret chỉ cấp cho hai server, không có tiền tố `VITE_` và không được đóng gói vào frontend.
+Secret chỉ cấp cho hai server, không có tiền tố `VITE_` và không được đóng gói vào frontend. Lịch sử chat cá nhân được lưu ở browser.
 
 ## Chạy Docker local khi Docker Desktop đã sẵn sàng
 
@@ -54,7 +54,7 @@ Nginx chuyển tiếp WebSocket Upgrade và đặt timeout 75 giây, lớn hơn 
 
 ## Cấu hình khi không dùng Docker
 
-Chạy hai Node server bằng process manager, đặt `NODE_ENV=production`, `RELAY_SECRET`, `ALLOWED_ORIGINS` và `SIGNAL_INTERNAL_URL`. Frontend build với URL/path public đúng server. Bắt buộc dùng HTTPS/WSS ở reverse proxy. Giữ `GROUP_FILE` trên đĩa bền vững và sao lưu file nhóm.
+Chạy hai Node server bằng process manager, đặt `NODE_ENV=production`, `RELAY_SECRET`, `ALLOWED_ORIGINS` và `SIGNAL_INTERNAL_URL`. Frontend build với URL/path public đúng server. Bắt buộc dùng HTTPS/WSS ở reverse proxy.
 
 STUN mặc định giúp thử DIRECT qua NAT. Không phải NAT nào cũng cho kết nối trực tiếp; relay Socket.IO giải quyết việc truyền chat khi DIRECT thất bại. Bản này không cần cài TURN và không đánh đồng relay Socket.IO với TURN.
 
@@ -62,6 +62,6 @@ STUN mặc định giúp thử DIRECT qua NAT. Không phải NAT nào cũng cho 
 
 - Giám sát health/log relay và signaling. Dừng/khởi động lại bằng Compose; browser tự reconnect.
 - Relay là điểm lỗi đơn; thiếu relay thì chỉ các đường DIRECT còn hoạt động. Chưa có nhiều relay/failover server.
-- Signaling xác thực phiên relay và quản lý nhóm. Khi signaling ngừng, phiên ứng dụng kết thúc và tự đăng ký lại khi server phục hồi.
+- Signaling quản lý peer và xác thực phiên relay. Khi signaling ngừng, phiên ứng dụng kết thúc và tự đăng ký lại khi server phục hồi.
 - Không lưu tin offline tại relay. Lịch sử thuộc browser và phụ thuộc dung lượng localStorage.
 - HMAC chống giả sender trong phiên; đây chưa phải hệ thống tài khoản xác thực người dùng hoặc E2EE.

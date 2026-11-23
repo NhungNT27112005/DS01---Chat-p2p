@@ -45,13 +45,9 @@ export function createRelayServer({ secret = getSecret(), signalingUrl = process
         if (sender?.registrationId !== ticket.registrationId || !socket.connected) return reject('Phiên người gửi đã kết thúc.');
         const target = peers.get(packet.receiverId);
         if (!target?.connected || target.data.ticket?.expiresAt <= Date.now() || target.data.ticket?.registrationId !== receiver?.registrationId) return reject('Peer đích chưa kết nối relay hoặc đang offline.');
-        if (packet.groupId) {
-          const group = await query('groups', packet.groupId);
-          if (!group?.members.includes(packet.senderId) || !group.members.includes(packet.receiverId)) return reject('Peer không còn là thành viên nhóm.');
-        }
         // Whitelist the envelope. The content and IDs are preserved verbatim.
-        const { version, type, messageId, sessionId, senderId, receiverId, groupId, sequence, timestamp, content, ackFor } = packet;
-        const forwarded = { version, type, messageId, sessionId, senderId, receiverId, groupId, sequence, timestamp, content, deliveryMode: 'RELAY', ...(type === 'ACK' ? { ackFor } : {}) };
+        const { version, type, messageId, sessionId, senderId, receiverId, sequence, timestamp, content, ackFor } = packet;
+        const forwarded = { version, type, messageId, sessionId, senderId, receiverId, sequence, timestamp, content, deliveryMode: 'RELAY', ...(type === 'ACK' ? { ackFor } : {}) };
         target.emit('relay:packet', forwarded);
         metrics.forwarded++; metrics.bytes += bytes;
         log('[relay] FORWARD', type, senderId, '->', receiverId, messageId);

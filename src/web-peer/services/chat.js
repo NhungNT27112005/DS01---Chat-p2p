@@ -2,11 +2,11 @@ import { signalingSocket, registerPeer, request } from './signaling.js';
 import { createConnectionManager } from './connection-manager.js';
 import { createReliableService } from './reliable.js';
 import { createHistory, browserStorage } from './history.js';
-import { createChatMessage, createGroupMessage, createAckMessage } from '../../shared/messages.js';
+import { createChatMessage, createAckMessage } from '../../shared/messages.js';
 import { validatePacket, messageKey, orderMessages } from '../../shared/protocol.js';
 
 export function createChatClient({ socket = signalingSocket, manager = createConnectionManager(), reliable = createReliableService(), storage = browserStorage('localStorage'), sessionStorage = browserStorage('sessionStorage') } = {}) {
-  let state = { connectionStatus: 'Đang kết nối signaling...', registrationStatus: '', currentPeer: null, onlinePeers: [], groups: [], messages: [], routes: {}, relayReady: false, error: '' };
+  let state = { connectionStatus: 'Đang kết nối signaling...', registrationStatus: '', currentPeer: null, onlinePeers: [], messages: [], routes: {}, relayReady: false, error: '' };
   const listeners = new Set();
   let seen = new Set();
   let owner = null;
@@ -23,7 +23,7 @@ export function createChatClient({ socket = signalingSocket, manager = createCon
   const setMessages = messages => { publish({ messages: orderMessages(messages).slice(-2000) }); persist(); };
   const updateDelivery = (packet, status, error = null, deliveryMode = null) => {
     setMessages(state.messages.map(row => {
-      if (row.senderId !== packet.senderId || row.messageId !== packet.messageId || row.sessionId !== packet.sessionId || row.groupId !== packet.groupId || !row.deliveries?.[packet.receiverId]) return row;
+      if (row.senderId !== packet.senderId || row.messageId !== packet.messageId || row.sessionId !== packet.sessionId || !row.deliveries?.[packet.receiverId]) return row;
       const old = row.deliveries[packet.receiverId];
       if (old.status === 'RECEIVED' || (['SENT', 'FORWARDED'].includes(status) && old.status === 'FAILED')) return row;
       return { ...row, deliveries: { ...row.deliveries, [packet.receiverId]: { status, error, deliveryMode: deliveryMode || old.deliveryMode } } };
@@ -39,15 +39,11 @@ export function createChatClient({ socket = signalingSocket, manager = createCon
   const receive = async ({ peerId, message, deliveryMode }) => {
     if (!state.currentPeer || !validatePacket(message) || message.senderId !== peerId || message.receiverId !== owner || message.deliveryMode !== deliveryMode) return;
     if (message.type === 'ACK') {
-      const row = state.messages.find(row => row.messageId === message.ackFor && row.senderId === owner && row.sessionId === message.sessionId && row.groupId === message.groupId && row.deliveries?.[peerId]);
+      const row = state.messages.find(row => row.messageId === message.ackFor && row.senderId === owner && row.sessionId === message.sessionId && row.deliveries?.[peerId]);
       if (!row) return;
       reliable.acknowledgeMessage(message);
       updateDelivery({ ...row, receiverId: peerId }, 'RECEIVED', null, deliveryMode);
       return;
-    }
-    if (message.type === 'GROUP_MESSAGE') {
-      const group = state.groups.find(group => group.groupId === message.groupId);
-      if (!group?.members.includes(owner) || !group.members.includes(peerId)) return;
     }
     const key = messageKey(message);
     if (!seen.has(key)) {
@@ -56,17 +52,13 @@ export function createChatClient({ socket = signalingSocket, manager = createCon
       setMessages([...state.messages, message]);
     }
     // ACK again for duplicates, after the message has entered local history.
-    const ack = createAckMessage({ senderId: owner, receiverId: peerId, sessionId: message.sessionId, ackFor: message.messageId, groupId: message.groupId });
+    const ack = createAckMessage({ senderId: owner, receiverId: peerId, sessionId: message.sessionId, ackFor: message.messageId });
     try { await manager.sendToPeer(ack, { preferRelay: deliveryMode === 'RELAY' }); }
     catch (error) { publish({ error: `Không thể gửi ACK: ${error.message}` }); }
   };
   const dispatch = (packet, version) => reliable.sendReliable(packet, async (copy, { attempt }) => {
     if (version !== epoch || copy.senderId !== owner || !state.currentPeer) throw new Error('Phiên đã kết thúc.');
     if (!state.onlinePeers.some(peer => peer.peerId === copy.receiverId)) throw new Error('Peer đích đang offline.');
-    if (copy.groupId) {
-      const group = state.groups.find(group => group.groupId === copy.groupId);
-      if (!group?.members.includes(copy.senderId) || !group.members.includes(copy.receiverId)) throw new Error('Thành viên nhóm đã thay đổi.');
-    }
     const result = await manager.sendToPeer(copy, { preferRelay: attempt > 0 });
     if (version === epoch) updateDelivery(copy, result.deliveryMode === 'RELAY' ? 'FORWARDED' : 'SENT', null, result.deliveryMode);
     return result;
@@ -77,7 +69,7 @@ export function createChatClient({ socket = signalingSocket, manager = createCon
   };
   const onDisconnect = () => {
     invalidateSession(); manager.start();
-    publish({ connectionStatus: 'Mất kết nối signaling; đang kết nối lại...', currentPeer: null, onlinePeers: [], groups: [], routes: {}, relayReady: false });
+    publish({ connectionStatus: 'Mất kết nối signaling; đang kết nối lại...', currentPeer: null, onlinePeers: [], routes: {}, relayReady: false });
   };
   const onRegistered = result => {
     publish({ registrationStatus: result.message });
@@ -102,7 +94,7 @@ export function createChatClient({ socket = signalingSocket, manager = createCon
     start() {
       if (stops.length) return;
       manager.start();
-      const bindings = [['connect', onConnect], ['disconnect', onDisconnect], ['connect_error', error => publish({ connectionStatus: `Lỗi kết nối: ${error.message}` })], ['peer:register:result', onRegistered], ['peers:list', onPeers], ['groups:list', groups => publish({ groups })]];
+      const bindings = [['connect', onConnect], ['disconnect', onDisconnect], ['connect_error', error => publish({ connectionStatus: `Lỗi kết nối: ${error.message}` })], ['peer:register:result', onRegistered], ['peers:list', onPeers]];
       bindings.forEach(([event, fn]) => socket.on(event, fn));
       stops = [() => bindings.forEach(([event, fn]) => socket.off(event, fn)), manager.onMessage(event => { receive(event).catch(error => publish({ error: error.message })); }), manager.onStateChange(event => publish({ routes: { ...state.routes, [event.peerId]: event } })), manager.relay.onStateChange(({ ready }) => publish({ relayReady: ready }))];
       ticketTimer = setInterval(async () => {
@@ -113,7 +105,7 @@ export function createChatClient({ socket = signalingSocket, manager = createCon
     },
     stop() {
       clearInterval(ticketTimer); stops.forEach(stop => stop()); stops = []; invalidateSession(); socket.disconnect();
-      publish({ currentPeer: null, onlinePeers: [], groups: [], routes: {}, relayReady: false, connectionStatus: 'Đang kết nối signaling...' });
+      publish({ currentPeer: null, onlinePeers: [], routes: {}, relayReady: false, connectionStatus: 'Đang kết nối signaling...' });
     },
     register(peerId, displayName) {
       if (state.currentPeer) throw new Error('Bạn đã tham gia mạng.');
@@ -128,21 +120,6 @@ export function createChatClient({ socket = signalingSocket, manager = createCon
       setMessages([...state.messages, { ...packet, deliveries: { [receiverId]: { status: 'SENDING', deliveryMode: 'DIRECT', error: null } } }]);
       dispatch(packet, epoch);
       return packet.messageId;
-    },
-    sendGroup(groupId, content) {
-      const group = state.groups.find(group => group.groupId === groupId);
-      if (!state.currentPeer || !group?.members.includes(owner)) throw new Error('Bạn không thuộc nhóm này.');
-      const recipients = group.members.filter(id => id !== owner);
-      const packet = createGroupMessage({ senderId: owner, receiverId: recipients[0] || owner, groupId, sessionId: messageSession, sequence: nextSequence(`group:${groupId}`), content });
-      const deliveries = Object.fromEntries(recipients.map(id => [id, { status: state.onlinePeers.some(peer => peer.peerId === id) ? 'SENDING' : 'FAILED', deliveryMode: 'DIRECT', error: state.onlinePeers.some(peer => peer.peerId === id) ? null : 'Thành viên offline; không lưu chuyển tiếp trên server.' }]));
-      setMessages([...state.messages, { ...packet, deliveries }]);
-      for (const id of recipients) if (deliveries[id].status === 'SENDING') dispatch({ ...packet, receiverId: id }, epoch);
-      return packet.messageId;
-    },
-    createGroup: (name, members) => request('group:create', { name, members }),
-    updateGroup: (groupId, members) => {
-      const group = state.groups.find(group => group.groupId === groupId);
-      return request('group:update', { groupId, members, revision: group?.revision });
     },
     clearError: () => publish({ error: '' }),
   };

@@ -1,6 +1,5 @@
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { chatClient } from './services/chat.js';
-import GroupChat from './components/GroupChat.jsx';
 
 const MESSAGE_STATUS_LABELS = {
   SENDING: 'Đang gửi', SENT: 'Đã gửi, chờ xác nhận', FORWARDED: 'Đã chuyển tiếp, chờ xác nhận',
@@ -228,7 +227,6 @@ export default function App() {
           )}
         </section>
       )}
-      <GroupChat client={chatClient} state={state} statusLabels={MESSAGE_STATUS_LABELS} />
     </main>
   );
 }

@@ -2,7 +2,7 @@
 
 ## Vai trò
 
-Signaling giữ danh sách peer online, socket đăng ký và nhóm; chuyển offer/answer/ICE đúng peer đích. Không chuyển tiếp nội dung chat. Relay là một tiến trình độc lập, duy trì ánh xạ Peer ID → socket, chuyển gói chat/ACK đúng đích. Browser có thể vừa khởi tạo vừa nhận kết nối WebRTC.
+Signaling giữ danh sách peer online và socket đăng ký; chuyển offer/answer/ICE đúng peer đích. Không chuyển tiếp nội dung chat. Relay là một tiến trình độc lập, duy trì ánh xạ Peer ID → socket, chuyển gói chat/ACK đúng đích. Browser có thể vừa khởi tạo vừa nhận kết nối WebRTC.
 
 ```text
 Browser A ─── Socket.IO metadata ─── Signaling ─── Browser B
@@ -12,18 +12,17 @@ Browser A ─── Socket.IO metadata ─── Signaling ─── Browser B
     └──────── Socket.IO ── Relay ── Socket.IO ───────┘
 ```
 
-`connection-manager.js` chọn đường truyền. `reliable.js` theo dõi ACK độc lập với đường truyền. `chat.js` kiểm tra nguồn gửi, quản lý lịch sử, chống trùng và phân phối nhóm. `App.jsx`/`GroupChat.jsx` hiển thị trạng thái.
+`connection-manager.js` chọn đường truyền. `reliable.js` theo dõi ACK độc lập với đường truyền. `chat.js` kiểm tra nguồn gửi, quản lý lịch sử, chống trùng và gửi tin cá nhân. `App.jsx` hiển thị cuộc trò chuyện và trạng thái.
 
 ## Gói tin
 
 ```js
 {
   version: 1,
-  type: 'CHAT_MESSAGE', // hoặc GROUP_MESSAGE, ACK
+  type: 'CHAT_MESSAGE', // hoặc ACK
   messageId: 'uuid',
   senderId: 'peer-a',
   receiverId: 'peer-b',
-  groupId: null,       // GROUP_MESSAGE bắt buộc có Group ID
   sessionId: 'uuid',
   sequence: 1,
   timestamp: 1700000000000,
@@ -32,11 +31,11 @@ Browser A ─── Socket.IO metadata ─── Signaling ─── Browser B
 }
 ```
 
-ACK có Message ID riêng, `ackFor` trỏ tới Message ID gốc, cùng Session ID và Group ID, đảo sender/receiver, `sequence`/`content` bằng null. Không ACK một ACK. Relay xác nhận chuyển tiếp qua callback Socket.IO; callback này không thay cho ACK của người nhận.
+ACK có Message ID riêng, `ackFor` trỏ tới Message ID gốc, cùng Session ID, đảo sender/receiver, `sequence`/`content` bằng null. Không ACK một ACK. Relay xác nhận chuyển tiếp qua callback Socket.IO; callback này không thay cho ACK của người nhận.
 
-Session ID của **gói chat** là phiên ứng dụng của người gửi. Session ID của **offer/answer/ICE** là phiên kết nối WebRTC. Hai lớp này tách nhau để tin chờ ACK giữ nguyên ID khi đổi DIRECT/RELAY hoặc tái tạo đường truyền. Bên nhận xác thực sender bằng danh tính transport đã ràng buộc, kiểm tra receiver và cấu trúc gói; ACK phải khớp đầy đủ sender/receiver/session/message/group.
+Session ID của **gói chat** là phiên ứng dụng của người gửi. Session ID của **offer/answer/ICE** là phiên kết nối WebRTC. Hai lớp này tách nhau để tin chờ ACK giữ nguyên ID khi đổi DIRECT/RELAY hoặc tái tạo đường truyền. Bên nhận xác thực sender bằng danh tính transport đã ràng buộc, kiểm tra receiver và cấu trúc gói; ACK phải khớp đầy đủ sender/receiver/session/message.
 
-Fan-out nhóm tạo một Message ID, sequence và timestamp, sau đó sao chép cho từng receiver. Bộ theo dõi ACK dùng khóa `[senderId, receiverId, sessionId, messageId]`; bộ chống hiển thị trùng dùng `[senderId, messageId]`.
+Mỗi tin nhắn có một người nhận. Bộ theo dõi ACK dùng khóa `[senderId, receiverId, sessionId, messageId]`; bộ chống hiển thị trùng dùng `[senderId, messageId]`.
 
 ## API giữa các phần
 
@@ -50,7 +49,7 @@ Fan-out nhóm tạo một Message ID, sequence và timestamp, sau đó sao chép
 | `reliable.sendReliable(packet, send, onFailed)` | Đăng ký trước khi gửi, chờ ACK, retry có giới hạn |
 | `reliable.acknowledgeMessage(ack)` | Hủy retry đúng người nhận và đúng gói |
 | `history.load/save(owner, ...)` | Lưu riêng từng chủ Peer ID |
-| `chatClient.sendPrivate/sendGroup` | Giao diện gọi API ứng dụng, không thao tác transport trực tiếp |
+| `chatClient.sendPrivate` | Giao diện gọi API gửi tin cá nhân, không thao tác transport trực tiếp |
 
 ## Trạng thái và lỗi
 
@@ -62,12 +61,12 @@ Ngữ nghĩa: gửi lại có giới hạn kết hợp ACK ứng dụng và dedu
 
 ## Phân công và điểm tích hợp
 
-- Người 1: WebRTC, chat cá nhân, gói tin, ACK/retry/dedup/order, history cá nhân/nhóm, kiểm thử liên quan.
-- Người 2: signaling quản lý peer/nhóm, relay server/client, connection manager, chat nhóm, triển khai và kiểm thử liên mạng.
+- Người 1: WebRTC, chat cá nhân, gói tin, ACK/retry/dedup/order, history cá nhân, kiểm thử liên quan.
+- Người 2: signaling quản lý peer, relay server/client, connection manager, triển khai và kiểm thử liên mạng.
 - Các phần đã được ghép trong workspace. Khi phát triển riêng, giữ API trên và giữ nguyên Message ID/Session ID ở mọi lần retry.
 
 ## NAT, STUN, TURN và giới hạn relay
 
 STUN giúp tìm địa chỉ công khai; ICE thử các đường truyền. Một số NAT/tường lửa vẫn chặn DIRECT. Bản này dùng relay Socket.IO ở tầng ứng dụng qua kết nối outbound để xử lý trường hợp đó; không yêu cầu TURN. TURN là một loại relay ở tầng WebRTC, khác relay Socket.IO trong dự án. Tham khảo [giao thức WebRTC của MDN](https://developer.mozilla.org/en-US/docs/Web/API/WebRTC_API/Protocols).
 
-Relay là một điểm lỗi đơn và tăng băng thông/độ trễ do phải nhận rồi gửi mỗi gói. Bản hiện tại còn truy vấn signaling để xác thực phiên/nhóm nên signaling cũng là phụ thuộc của RELAY. DIRECT đang thiết lập không đi qua relay; nhưng chính sách kết thúc phiên khi signaling mất vẫn áp dụng. Mở rộng nhiều relay cần directory/chọn relay, đồng bộ danh tính và nhóm, rồi thử lại trên relay khác; chưa triển khai trong bản tối thiểu.
+Relay là một điểm lỗi đơn và tăng băng thông/độ trễ do phải nhận rồi gửi mỗi gói. Bản hiện tại còn truy vấn signaling để xác thực phiên nên signaling cũng là phụ thuộc của RELAY. DIRECT đang thiết lập không đi qua relay; nhưng chính sách kết thúc phiên khi signaling mất vẫn áp dụng. Mở rộng nhiều relay cần directory/chọn relay, đồng bộ danh tính, rồi thử lại trên relay khác; chưa triển khai trong bản tối thiểu.

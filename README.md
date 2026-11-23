@@ -1,6 +1,6 @@
 # DS01 — Chat P2P bằng JavaScript
 
-Ứng dụng React + Vite, Node.js + Express, Socket.IO và WebRTC DataChannel. Signaling quản lý peer/nhóm và chuyển tiếp offer/answer/ICE. Nội dung chat ưu tiên đi trực tiếp; một relay Socket.IO độc lập được dùng khi DIRECT không khả dụng.
+Ứng dụng chat cá nhân 1–1 dùng React + Vite, Node.js + Express, Socket.IO và WebRTC DataChannel. Signaling quản lý peer và chuyển tiếp offer/answer/ICE. Nội dung chat ưu tiên đi trực tiếp; một relay Socket.IO độc lập được dùng khi DIRECT không khả dụng.
 
 ## Chạy trên máy
 
@@ -14,7 +14,7 @@ npm.cmd run dev:all
 
 Nếu đã có `.env`, giữ file hiện tại và bổ sung các biến còn thiếu từ `.env.example`. Chạy `Copy-Item` chỉ khi chưa có file.
 
-Mở **http://localhost:5173**. Dùng ba tab/cửa sổ độc lập và đăng ký `peer-a`, `peer-b`, `peer-c` với tên khác nhau. Chọn người nhận, bấm **Kết nối WebRTC** rồi gửi tin. Nút này thử DIRECT trước và tự chuyển RELAY nếu thất bại. Giao diện giữ phần chat cá nhân hiện có và bổ sung trạng thái relay, lịch sử, tạo nhóm, chọn thành viên và chat nhóm.
+Mở **http://localhost:5173**. Dùng hai tab/cửa sổ độc lập và đăng ký `peer-a`, `peer-b` với tên khác nhau. Chọn người nhận, bấm **Kết nối WebRTC** rồi gửi tin. Nút này thử DIRECT trước và tự chuyển RELAY nếu thất bại. Giao diện hiển thị chat cá nhân, trạng thái relay và lịch sử theo từng người nhận.
 
 Có thể chạy riêng trong ba terminal:
 
@@ -33,13 +33,12 @@ npm.cmd run dev:web
 
 ```text
 src/
-  signaling/           Đăng ký, discovery, signaling WebRTC, quản lý nhóm
+  signaling/           Đăng ký, discovery, signaling WebRTC
   relay/               Relay server độc lập, xác thực và chuyển tiếp đúng đích
   server/common.js     Cấu hình server, vé HMAC, listen và origin
   shared/              Quy ước gói tin, kiểm tra dữ liệu, sự kiện
   web-peer/
     App.jsx             Giao diện chat cá nhân và trạng thái peer
-    components/GroupChat.jsx
     services/
       signaling.js      Socket.IO client tới signaling
       webrtc.js         Offer/answer/ICE, DataChannel, timeout, dọn phiên
@@ -47,7 +46,7 @@ src/
       connection-manager.js  Chọn DIRECT/RELAY và fallback
       reliable.js       ACK, timeout, gửi lại có giới hạn
       history.js        Lưu/khôi phục localStorage và sắp thứ tự
-      chat.js           Ghép discovery, truyền tin, nhóm, ACK và lịch sử
+      chat.js           Ghép discovery, truyền tin cá nhân, ACK và lịch sử
 scripts/dev.js          Khởi chạy ba tiến trình, dừng cùng nhau
 tests/                  Unit/integration và Chrome E2E (không cần Playwright)
 deploy/                 Docker Compose, nginx, HTTPS Caddy và cấu hình mẫu
@@ -64,8 +63,7 @@ docs/                   Giải thích giao thức, demo và triển khai
 - `SENT`: DataChannel đã nhận dữ liệu để gửi. `FORWARDED`: relay đã chuyển tới socket đích. **Chỉ ACK từ peer nhận mới là `RECEIVED`**. Hết retry là `FAILED`/“Chưa xác nhận được”; bên nhận có thể đã nhận nhưng ACK bị mất. ACK hợp lệ đến muộn có thể xác nhận lại tin.
 - Chống trùng theo `(senderId, messageId)` trên cả hai đường truyền. Tin trùng vẫn được ACK lại. Lịch sử giữ 2.000 tin gần nhất/Peer ID, bộ chống trùng giữ 10.000 ID; đây là giới hạn lưu trữ có chủ đích.
 - Sequence tăng theo người gửi/phiên/cuộc trò chuyện. Tin đến muộn được chèn theo sequence; thiếu một tin không làm chặn toàn bộ cuộc trò chuyện. Không cam kết tổng thứ tự thời gian tuyệt đối giữa hai người có đồng hồ khác nhau.
-- Nhóm do signaling quản lý và lưu `data/groups.json`. Chủ nhóm thêm/xóa thành viên; revision ngăn cập nhật đè lên bản cũ. Nhóm gửi fan-out qua DIRECT/RELAY tùy từng người; cùng Message ID nhưng ACK/trạng thái riêng cho từng người nhận.
-- Thành viên offline vẫn thuộc nhóm. Gửi cho họ được báo thất bại rõ ràng; bản này không có hàng đợi store-and-forward trên server.
+- Gửi cho peer offline được báo thất bại rõ ràng; bản này không có hàng đợi store-and-forward trên server.
 - Lịch sử riêng theo Peer ID trong localStorage; danh tính để tự đăng ký lại nằm trong sessionStorage của tab. Tải lại tab khôi phục lịch sử, kết nối lại signaling/relay và tạo phiên ứng dụng mới. Tin phiên cũ đang chờ ACK được đánh dấu chưa xác nhận, không tự gửi lại khi mở lại.
 
 ## Kiểm thử
@@ -83,7 +81,7 @@ $env:CHROME_PATH = 'C:\Program Files\Google\Chrome\Application\chrome.exe'
 npm.cmd run test:e2e
 ```
 
-Kết quả E2E gồm WebRTC thật, chat hai chiều đồng thời, relay không nhận nội dung DIRECT, mất ACK và gửi lại giữ ID, chuyển DIRECT → RELAY, nhóm kết hợp đường truyền, thay đổi thành viên, hết retry, restart/lịch sử, offline và relay ngừng hoạt động. Báo cáo/log/screenshot được tạo tại `test-results/` (Git bỏ qua).
+Kết quả E2E gồm WebRTC thật, chat hai chiều đồng thời, relay không nhận nội dung DIRECT, mất ACK và gửi lại giữ ID, chuyển DIRECT → RELAY, cách ly tin nhắn giữa các cặp peer, hết retry, restart/lịch sử, offline và relay ngừng hoạt động. Báo cáo/log/screenshot được tạo tại `test-results/` (Git bỏ qua).
 
 Đường DIRECT không truy cập được được mô phỏng trong browser bằng chặn khởi tạo PeerConnection. Đây là bằng chứng fallback ở local; không được mô tả là đã kiểm thử NAT/WAN thật.
 

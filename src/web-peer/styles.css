@@ -33,6 +33,5 @@ section { margin-top: 24px; border-top: 1px solid #d8e5df; padding-top: 16px; }
 input[type="text"], input:not([type]) { max-width: 100%; box-sizing: border-box; padding: 6px; }
 button { margin: 4px; padding: 6px 10px; cursor: pointer; }
 button:disabled { cursor: default; }
-.member-choice { display: block; margin: 6px 0; }
 li { margin: 8px 0; overflow-wrap: anywhere; }
 [role="alert"] { color: #a32222; }

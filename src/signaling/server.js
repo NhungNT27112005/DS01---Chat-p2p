@@ -1,45 +1,22 @@
 import express from 'express';
 import { createServer } from 'node:http';
 import { Server } from 'socket.io';
-import { randomUUID } from 'node:crypto';
-import { readFileSync, mkdirSync, writeFileSync, renameSync } from 'node:fs';
-import { dirname } from 'node:path';
 import { WEBRTC_EVENTS } from '../shared/webrtc-events.js';
 import { isId } from '../shared/protocol.js';
 import { getSecret, issueTicket, socketOptions } from '../server/common.js';
 
-export function createSignalingServer({ secret = getSecret(), allowedOrigins, groupFile = null, log = console.log } = {}) {
+export function createSignalingServer({ secret = getSecret(), allowedOrigins, log = console.log } = {}) {
   const app = express();
   const httpServer = createServer(app);
   const io = new Server(httpServer, socketOptions(allowedOrigins));
   const peers = new Map();
-  const groups = new Map();
-  if (groupFile) {
-    try { for (const group of JSON.parse(readFileSync(groupFile, 'utf8'))) if (isId(group.groupId) && isId(group.ownerId) && Array.isArray(group.members) && group.members.includes(group.ownerId) && group.members.every(isId)) groups.set(group.groupId, group); }
-    catch (error) { if (error.code !== 'ENOENT') throw new Error(`Cannot load groups: ${error.message}`); }
-  }
-  const saveGroups = () => {
-    if (!groupFile) return;
-    mkdirSync(dirname(groupFile), { recursive: true });
-    writeFileSync(`${groupFile}.tmp`, JSON.stringify([...groups.values()], null, 2));
-    renameSync(`${groupFile}.tmp`, groupFile);
-  };
   const publicPeer = p => ({ peerId: p.peerId, displayName: p.displayName, status: 'ONLINE', connectivity: p.connectivity });
   const broadcastPeers = () => io.emit('peers:list', [...peers.values()].map(publicPeer));
-  const groupsFor = id => [...groups.values()].filter(g => g.members.includes(id));
-  const broadcastGroups = () => {
-    for (const peer of peers.values()) io.to(peer.socketId).emit('groups:list', groupsFor(peer.peerId));
-  };
   app.get('/health', (_req, res) => res.json({ service: 'signaling', status: 'ok', onlinePeers: peers.size }));
   app.get('/internal/peers/:id', (req, res) => {
     if (req.headers.authorization !== `Bearer ${secret}`) return res.sendStatus(403);
     const peer = peers.get(req.params.id);
     return peer ? res.json({ peerId: peer.peerId, registrationId: peer.socketId }) : res.sendStatus(404);
-  });
-  app.get('/internal/groups/:id', (req, res) => {
-    if (req.headers.authorization !== `Bearer ${secret}`) return res.sendStatus(403);
-    const group = groups.get(req.params.id);
-    return group ? res.json(group) : res.sendStatus(404);
   });
   io.on('connection', socket => {
     socket.emit('peers:list', [...peers.values()].map(publicPeer));
@@ -55,7 +32,6 @@ export function createSignalingServer({ secret = getSecret(), allowedOrigins, gr
       socket.data.peerId = peerId;
       const relayToken = issueTicket(peerId, socket.id, secret);
       socket.emit('peer:register:result', { ok: true, message: 'Tham gia mạng thành công.', peer: publicPeer(peer), relayToken });
-      socket.emit('groups:list', groupsFor(peerId));
       broadcastPeers();
       log('[signaling] REGISTER', peerId);
     });
@@ -64,7 +40,6 @@ export function createSignalingServer({ secret = getSecret(), allowedOrigins, gr
     });
     // Socket.IO heartbeat removes dead sockets after pingInterval + pingTimeout.
     socket.on('peers:refresh', () => socket.emit('peers:list', [...peers.values()].map(publicPeer)));
-    socket.on('groups:refresh', () => { if (registered()) socket.emit('groups:list', groupsFor(socket.data.peerId)); });
     // Signaling forwards metadata only; chat packets are never routed here.
     for (const [event, field, type] of [
       [WEBRTC_EVENTS.OFFER, 'offer', 'offer'], [WEBRTC_EVENTS.ANSWER, 'answer', 'answer'], [WEBRTC_EVENTS.ICE_CANDIDATE, 'candidate', null],
@@ -83,29 +58,6 @@ export function createSignalingServer({ secret = getSecret(), allowedOrigins, gr
         io.to(receiver.socketId).emit(event, { senderId: socket.data.peerId, receiverId, sessionId, [field]: clean });
       });
     }
-    socket.on('group:create', (data, callback) => {
-      const done = typeof callback === 'function' ? callback : () => {};
-      if (!registered()) return done({ ok: false, message: 'Chưa đăng ký peer.' });
-      const name = typeof data?.name === 'string' ? data.name.trim() : '';
-      const members = [...new Set([socket.data.peerId, ...(Array.isArray(data?.members) ? data.members : [])])];
-      if (!name || name.length > 80 || members.length > 50 || !members.every(id => isId(id) && peers.has(id))) return done({ ok: false, message: 'Tên nhóm hoặc thành viên không hợp lệ (tối đa 50 người).' });
-      const group = { groupId: randomUUID(), name, ownerId: socket.data.peerId, members, revision: 1 };
-      groups.set(group.groupId, group);
-      try { saveGroups(); } catch { groups.delete(group.groupId); return done({ ok: false, message: 'Không thể lưu nhóm.' }); }
-      broadcastGroups(); done({ ok: true, group });
-    });
-    socket.on('group:update', (data, callback) => {
-      const done = typeof callback === 'function' ? callback : () => {};
-      const group = groups.get(data?.groupId);
-      if (!registered() || !group || group.ownerId !== socket.data.peerId) return done({ ok: false, message: 'Chỉ chủ nhóm được đổi thành viên.' });
-      if (data.revision !== group.revision) return done({ ok: false, message: 'Nhóm vừa thay đổi. Hãy thử lại.' });
-      const members = [...new Set(Array.isArray(data.members) ? data.members : [])];
-      if (!members.includes(group.ownerId) || members.length > 50 || !members.every(isId) || members.some(id => !group.members.includes(id) && !peers.has(id))) return done({ ok: false, message: 'Danh sách thành viên không hợp lệ.' });
-      const updated = { ...group, members, revision: group.revision + 1 };
-      groups.set(group.groupId, updated);
-      try { saveGroups(); } catch { groups.set(group.groupId, group); return done({ ok: false, message: 'Không thể lưu nhóm.' }); }
-      broadcastGroups(); done({ ok: true, group: updated });
-    });
     socket.on('disconnect', reason => {
       const id = socket.data.peerId;
       if (peers.get(id)?.socketId === socket.id) {
@@ -113,5 +65,5 @@ export function createSignalingServer({ secret = getSecret(), allowedOrigins, gr
       }
     });
   });
-  return { app, httpServer, io, peers, groups, close: () => new Promise(resolve => io.close(resolve)) };
+  return { app, httpServer, io, peers, close: () => new Promise(resolve => io.close(resolve)) };
 }

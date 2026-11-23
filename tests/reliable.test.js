@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createReliableService } from '../src/web-peer/services/reliable.js';
-import { createChatMessage, createAckMessage, createGroupMessage } from '../src/shared/messages.js';
+import { createChatMessage, createAckMessage } from '../src/shared/messages.js';
 const settle = async () => { for (let i = 0; i < 30; i++) await Promise.resolve(); };
 function clock() {
   let now = 0, id = 0;
@@ -23,7 +23,7 @@ function clock() {
   };
 }
 const message = () => createChatMessage({ senderId: 'a', receiverId: 'b', sessionId: 'session', sequence: 1, content: 'hello' });
-const ack = m => createAckMessage({ senderId: m.receiverId, receiverId: m.senderId, sessionId: m.sessionId, ackFor: m.messageId, groupId: m.groupId });
+const ack = m => createAckMessage({ senderId: m.receiverId, receiverId: m.senderId, sessionId: m.sessionId, ackFor: m.messageId });
 test('ACK association, duplicate ACK and ACK arriving before send resolves', async () => {
   const time = clock(); const service = createReliableService({ ...time }); const m = message();
   await service.sendReliable(m, async packet => {
@@ -52,14 +52,6 @@ test('a hanging transport is bounded and cancellation never rearms retry', async
   const sending = service.sendReliable(m, () => { attempts++; return new Promise(() => {}); }, () => assert.fail('cancelled'));
   await time.tick(100); await sending; assert.equal(service.cancelPendingMessages('other'), 0); assert.equal(service.cancelPendingMessages('a'), 1);
   await time.tick(60000); assert.equal(attempts, 1); assert.equal(time.count(), 0);
-});
-test('group copies share Message ID but track ACK independently per recipient', async () => {
-  const time = clock(); const service = createReliableService({ ...time });
-  const first = createGroupMessage({ ...message(), groupId: 'group' }); const second = { ...first, receiverId: 'c' };
-  await service.sendReliable(first, async () => ({}), () => {}); await service.sendReliable(second, async () => ({}), () => {});
-  assert.equal(service.acknowledgeMessage(ack(first)), true); assert.equal(service.pendingCount(), 1);
-  assert.equal(service.acknowledgeMessage({ ...ack(second), groupId: 'wrong' }), false);
-  assert.equal(service.acknowledgeMessage(ack(second)), true); assert.equal(service.pendingCount(), 0);
 });
 test('cancelling immediately prevents a queued first send and cancels a hanging send timer', async () => {
   const time = clock(); const service = createReliableService({ ...time }); let sends = 0;

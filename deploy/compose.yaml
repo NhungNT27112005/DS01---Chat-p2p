@@ -7,9 +7,6 @@ services:
       NODE_ENV: production
       RELAY_SECRET: ${RELAY_SECRET:?Set RELAY_SECRET in deploy/.env}
       ALLOWED_ORIGINS: ${PUBLIC_ORIGIN:?Set PUBLIC_ORIGIN}
-      GROUP_FILE: /app/data/groups.json
-    volumes:
-      - groups:/app/data
     restart: unless-stopped
   relay:
     build:
@@ -43,6 +40,5 @@ services:
     depends_on: [web]
     restart: unless-stopped
 volumes:
-  groups:
   caddy-data:
   caddy-config:

@@ -2,13 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { io } from 'socket.io-client';
 import { once } from 'node:events';
-import { mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import { createSignalingServer } from '../src/signaling/server.js';
 import { createRelayServer } from '../src/relay/server.js';
 import { listen, issueTicket, verifyTicket } from '../src/server/common.js';
-import { createChatMessage, createGroupMessage } from '../src/shared/messages.js';
+import { createChatMessage } from '../src/shared/messages.js';
 
 const secret = 'test-secret-with-at-least-thirty-two-characters';
 const silent = () => {};
@@ -23,14 +20,13 @@ test('signed tickets reject tampering and expired tickets', () => {
   assert.equal(verifyTicket(token,secret).peerId,'a');
   assert.equal(verifyTicket(token+'x',secret),null); assert.equal(verifyTicket(issueTicket('a','r',secret,-1),secret),null);
 });
-test('three peers: discovery, signaling isolation, relay identity, groups, offline and persistent membership', async t => {
-  const directory = await mkdtemp(join(tmpdir(),'ds01-groups-'));
-  const signaling = createSignalingServer({ secret, groupFile: join(directory,'groups.json'), log: silent });
+test('three peers: discovery, private signaling isolation, relay identity, offline and stale tickets', async t => {
+  const signaling = createSignalingServer({ secret, log: silent });
   const signalPort = await listen(signaling.httpServer,0,'127.0.0.1');
   const relay = createRelayServer({ secret, signalingUrl: `http://127.0.0.1:${signalPort}`, log: silent });
   const relayPort = await listen(relay.httpServer,0,'127.0.0.1');
   const sockets = [];
-  t.after(async () => { sockets.forEach(socket => socket.disconnect()); await relay.close(); await signaling.close(); await rm(directory,{recursive:true,force:true}); });
+  t.after(async () => { sockets.forEach(socket => socket.disconnect()); await relay.close(); await signaling.close(); });
   const connect = async (port) => { const socket = io(`http://127.0.0.1:${port}`,{transports:['websocket'],forceNew:true}); sockets.push(socket); await once(socket,'connect'); return socket; };
   const register = async id => { const socket = await connect(signalPort); const result = event(socket,'peer:register:result'); socket.emit('peer:register',{peerId:id,displayName:id}); const registration = await result; assert.equal(registration.ok,true); return { socket, registration }; };
   const a = await register('a'), b = await register('b'), c = await register('c');
@@ -45,21 +41,14 @@ test('three peers: discovery, signaling isolation, relay identity, groups, offli
   const packet = createChatMessage({senderId:'a',receiverId:'b',sessionId:'chat-session',sequence:1,content:'relay hello'});
   const received = event(br,'relay:packet'); assert.equal((await request(ar,'relay:send',packet)).ok,true); const delivered = await received;
   assert.equal(delivered.content,packet.content); assert.equal(delivered.messageId,packet.messageId); assert.equal(delivered.deliveryMode,'RELAY');
+  assert.equal(Object.hasOwn(delivered, 'groupId'), false);
   assert.equal((await request(cr,'relay:send',packet)).ok,false);
   assert.equal((await request(ar,'relay:send',{...packet,content:'x'.repeat(40000)})).ok,false);
+  assert.equal((await request(ar,'relay:send',{...packet,type:'GROUP_MESSAGE',groupId:'old-group'})).ok,false);
+  assert.equal((await request(ar,'relay:send',{...packet,groupId:'old-group'})).ok,false);
   assert.equal(relay.metrics.forwarded,1);
-  const created = await request(a.socket,'group:create',{name:'three peers',members:['b','c']}); assert.equal(created.ok,true);
-  const group = created.group;
-  const unauthorized = await request(b.socket,'group:update',{groupId:group.groupId,members:['a','b'],revision:1}); assert.equal(unauthorized.ok,false);
-  const updated = await request(a.socket,'group:update',{groupId:group.groupId,members:['a','b'],revision:1}); assert.equal(updated.ok,true);
-  assert.equal((await request(a.socket,'group:update',{groupId:group.groupId,members:['a'],revision:1})).ok,false);
-  const groupPacket = createGroupMessage({...packet,groupId:group.groupId,receiverId:'c'});
-  assert.equal((await request(ar,'relay:send',groupPacket)).ok,false);
   const offline = event(a.socket,'peers:list'); b.socket.disconnect(); assert.equal((await offline).some(peer=>peer.peerId==='b'),false);
   assert.equal((await request(ar,'relay:send',packet)).ok,false);
   const returned = await register('b'); assert.notEqual(returned.registration.relayToken,b.registration.relayToken);
   assert.equal((await request(br,'relay:register',{token:b.registration.relayToken})).ok,false);
-  const restored = createSignalingServer({ secret, groupFile: join(directory,'groups.json'), log:silent });
-  assert.deepEqual(restored.groups.get(group.groupId).members,['a','b']);
-  await restored.close();
 });

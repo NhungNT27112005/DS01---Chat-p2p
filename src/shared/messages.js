@@ -34,7 +34,6 @@ export function createChatMessage({
     sessionId,
     senderId,
     receiverId,
-    groupId: null,
     sequence,
     timestamp: Date.now(),
     content: content.trim(),
@@ -47,7 +46,6 @@ export function createAckMessage({
   receiverId,
   sessionId,
   ackFor,
-  groupId = null,
 }) {
   const ids = [
     senderId,
@@ -73,17 +71,10 @@ export function createAckMessage({
     sessionId,
     senderId,
     receiverId,
-    groupId,
     sequence: null,
     timestamp: Date.now(),
     content: null,
     deliveryMode: 'DIRECT',
     ackFor,
   };
-}
-
-export function createGroupMessage(options) {
-  const message = createChatMessage(options);
-  if (typeof options.groupId !== 'string' || !options.groupId.trim()) throw new Error('Group ID không hợp lệ.');
-  return { ...message, type: 'GROUP_MESSAGE', groupId: options.groupId, ...(options.messageId ? { messageId: options.messageId } : {}) };
 }
