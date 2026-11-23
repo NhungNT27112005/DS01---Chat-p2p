@@ -7,7 +7,11 @@
     "dev": "vite",
     "dev:web": "vite",
     "dev:signaling": "node --env-file-if-exists=.env src/signaling/index.js",
-    "build": "vite build",
+    "dev:relay": "node --env-file-if-exists=.env src/relay/index.js",
+    "dev:all": "node scripts/dev.js",
+    "test": "node --test tests/*.test.js",
+    "test:e2e": "node tests/browser-e2e.js",
+    "build": "vite build --configLoader native",
     "preview": "vite preview"
   },
   "keywords": [],

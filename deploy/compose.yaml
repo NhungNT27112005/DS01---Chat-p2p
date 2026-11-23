@@ -1,0 +1,44 @@
+services:
+  signaling:
+    build:
+      context: ..
+      target: server
+    environment:
+      NODE_ENV: production
+      RELAY_SECRET: ${RELAY_SECRET:?Set RELAY_SECRET in deploy/.env}
+      ALLOWED_ORIGINS: ${PUBLIC_ORIGIN:?Set PUBLIC_ORIGIN}
+    restart: unless-stopped
+  relay:
+    build:
+      context: ..
+      target: server
+    command: ["node", "src/relay/index.js"]
+    environment:
+      NODE_ENV: production
+      RELAY_SECRET: ${RELAY_SECRET:?Set RELAY_SECRET}
+      ALLOWED_ORIGINS: ${PUBLIC_ORIGIN:?Set PUBLIC_ORIGIN}
+      SIGNAL_INTERNAL_URL: http://signaling:4001
+    depends_on: [signaling]
+    restart: unless-stopped
+  web:
+    build:
+      context: ..
+      target: web
+    ports: ["8080:80"]
+    depends_on: [signaling, relay]
+    restart: unless-stopped
+  https:
+    image: caddy:2-alpine
+    profiles: [internet]
+    environment:
+      PUBLIC_HOST: ${PUBLIC_HOST:-localhost}
+    ports: ["80:80", "443:443", "443:443/udp"]
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on: [web]
+    restart: unless-stopped
+volumes:
+  caddy-data:
+  caddy-config:
