@@ -1,3 +1,4 @@
+import GroupChatPanel from './GroupChatPanel.jsx';
 import { useEffect, useState } from 'react';
 import { signalingSocket, registerPeer } from './services/signaling.js';
 
@@ -125,6 +126,7 @@ export default function App() {
           </li>
         ))}
       </ul>
+      {currentPeer && <GroupChatPanel key={currentPeer.peerId} currentPeer={currentPeer} onlinePeers={onlinePeers} />}
     </main>
   );
 }

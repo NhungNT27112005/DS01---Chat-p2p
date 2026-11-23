@@ -7,8 +7,10 @@
     "dev": "vite",
     "dev:web": "vite",
     "dev:signaling": "node --env-file-if-exists=.env src/signaling/index.js",
+    "dev:relay": "node --env-file-if-exists=.env src/relay/index.js",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:group": "node --test tests/test-group.mjs tests/test-group-chat.mjs tests/test-local-group-transport.mjs"
   },
   "keywords": [],
   "author": "",
