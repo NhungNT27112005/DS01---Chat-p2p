@@ -1,4 +1,4 @@
-// Local multi-tab demo only. BroadcastChannel does not authenticate identities.
+// Chỉ là bản demo nhiều tab cục bộ. BroadcastChannel không xác thực danh tính.
 export function createLocalGroupTransport(peerId, { onReceive, onChange = () => {}, timeoutMs = 1500 }) {
   const channel = new BroadcastChannel('ds01:group-demo:v1');
   const pending = new Map();

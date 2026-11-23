@@ -20,7 +20,7 @@ export function validateGroup(g) {
 }
 const canonical = g => JSON.stringify({ ...g, members: [...g.members].sort(), formerMembers: [...g.formerMembers].sort() });
 
-// Each factory owns a separate store. The module exports below preserve the old API.
+// Mỗi nhà máy đều có một cửa hàng riêng. Các module xuất khẩu bên dưới giữ nguyên API cũ.
 export function createGroupManager(initial = []) {
   const groups = new Map(initial.map(g => { const v = validateGroup(g); return [v.groupId, v]; }));
   const getGroup = id => clone(groups.get(id) ?? null);

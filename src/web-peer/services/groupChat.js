@@ -32,7 +32,7 @@ export function createGroupChat({ peerId, sendToPeer, storage, onMessage = () =>
   try { validateState(state); } catch (cause) { throw new Error('INVALID_STORED_STATE', { cause }); }
   state = copy(state);
   let queue = Promise.resolve();
-  // Publish only after persistence succeeds. Failed writes leave memory untouched.
+  // Chỉ xuất bản sau khi thao tác kiên trì thành công. Việc ghi thất bại sẽ không làm thay đổi bộ nhớ.
   function transaction(fn) {
     const pending = queue.then(() => {
       const draft = copy(state), manager = createGroupManager(draft.groups);
@@ -122,7 +122,7 @@ export function createGroupChat({ peerId, sendToPeer, storage, onMessage = () =>
     return retryMessage(message.messageId);
   }
   async function retryMessage(messageId) {
-    // Queue read behind pending mutations; no locks are held during network I/O.
+    // Hàng đợi đọc phía sau các thay đổi đang chờ xử lý; không giữ khóa trong khi I/O mạng.
     await queue;
     const message = copy(state.messages.find(m => m.messageId === messageId && m.direction === 'out'));
     if (!message) fail('MESSAGE_NOT_FOUND');
@@ -150,7 +150,7 @@ export function createGroupChat({ peerId, sendToPeer, storage, onMessage = () =>
     const request = envelope('GROUP_SYNC_REQUEST', groupId, creatorId);
     const result = await deliver(creatorId, request);
     if (result.status === 'failed') fail(result.error);
-    // sendToPeer must bind the ACK to the authenticated intended recipient.
+    // sendToPeer phải gắn ACK với người nhận được xác thực đúng.
     const g = result.ack.group;
     await receive({ ...envelope('GROUP_STATE', groupId, peerId, { group: g }), senderId: creatorId }, creatorId);
     return { group: getGroup(groupId) };
