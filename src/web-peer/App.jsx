@@ -1,3 +1,4 @@
+import GroupChatPanel from './GroupChatPanel.jsx';
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { chatClient } from './services/chat.js';
 
@@ -227,6 +228,7 @@ export default function App() {
           )}
         </section>
       )}
+      {currentPeer && <GroupChatPanel key={currentPeer.peerId} currentPeer={currentPeer} onlinePeers={onlinePeers} />}
     </main>
   );
 }

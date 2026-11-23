@@ -35,3 +35,169 @@ button { margin: 4px; padding: 6px 10px; cursor: pointer; }
 button:disabled { cursor: default; }
 li { margin: 8px 0; overflow-wrap: anywhere; }
 [role="alert"] { color: #a32222; }
+
+/* Simple group-chat demo, usable across desktop and mobile widths. */
+main { 
+  max-width: 1100px; margin: 24px auto;
+}
+
+input:not([type="checkbox"]) { 
+  box-sizing: border-box;
+  padding: 10px;
+  border: 1px solid #bdcec7;
+  border-radius: 6px;
+  max-width: 100%;
+}
+
+button { 
+  padding: 9px 13px;
+  border: 1px solid #176b5b;
+  border-radius: 6px;
+  color: #176b5b;
+  background: white;
+  cursor: pointer;
+}
+
+button:disabled { 
+  opacity: .5;
+  cursor: default;
+}
+
+button:hover:not(:disabled), button.selected { 
+  background: #176b5b;
+  color: white;
+}
+
+.group-demo { 
+  margin-top: 28px;
+  border-top: 1px solid #d8e5df;
+  padding-top: 12px;
+}
+
+.demo-note, .notice { 
+  background: #eaf4f0;
+  padding: 12px;
+  border-radius: 6px;
+}
+
+.error { 
+  color: #9a2929;
+  background: #fff0ef;
+  padding: 12px;
+}
+
+.group-layout { 
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr);
+  gap: 24px;
+}
+
+.group-layout aside form > label { 
+  display: grid;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+fieldset {
+  border: 1px solid #d8e5df;
+  margin: 12px 0;
+  border-radius: 6px;
+}
+
+.member-choice {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 6px 0;
+}
+
+.group-list { 
+  display: grid; 
+  gap: 8px; 
+  margin-bottom: 12px; 
+}
+
+.group-list button { 
+  text-align: left; 
+  overflow-wrap: anywhere; 
+}
+
+.conversation { 
+  min-width: 0; 
+}
+
+.muted { 
+  color: #64776f; 
+  font-size: 14px; 
+}
+
+.member-list { 
+  display: flex; 
+  flex-wrap: wrap; 
+  gap: 8px; 
+  margin-bottom: 12px; 
+}
+
+.member-list span { 
+  background: #eef3f1; 
+  padding: 4px 8px; 
+  border-radius: 6px; 
+}
+
+.member-list button { 
+  padding: 1px 6px; 
+  margin-left: 6px; 
+}
+
+.inline-form { 
+  display: flex; 
+  gap: 8px; 
+  margin: 12px 0; 
+}
+
+.inline-form input { 
+  flex: 1; 
+  min-width: 0; 
+}
+
+.messages { 
+  height: 320px; 
+  overflow-y: auto; 
+  border: 1px solid #d8e5df; 
+  border-radius: 8px; 
+  padding: 12px; 
+  background: #f7faf8; 
+}
+
+.message { 
+  margin: 0 24px 12px 0; 
+  padding: 12px; 
+  background: white; 
+  border: 1px solid #d8e5df; 
+  border-radius: 8px; 
+  overflow-wrap: anywhere; 
+}
+
+.message.mine { 
+  margin: 0 0 12px 24px; 
+  background: #e6f2ed; 
+}
+
+.message p { 
+  white-space: pre-wrap; 
+  margin: 7px 0; 
+}
+
+.message small { 
+  display: block; 
+}
+
+.message button { 
+  margin-top: 8px; 
+}
+
+@media (max-width: 720px) { 
+  body { padding: 12px; } 
+  main { padding: 18px; } 
+  .group-layout { grid-template-columns: 1fr; } 
+}
