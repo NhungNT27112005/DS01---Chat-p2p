@@ -87,7 +87,7 @@ try {
     return {id,targetId,sessionId,evaluate, async reload() {
       await cdp('Page.reload',{},sessionId);
       await delay(500);
-      await waitFor(() => evaluate("!!document.querySelector('input[placeholder=\"Ví dụ: peer-a\"]')"),'reload React');
+      await waitFor(() => evaluate("!!document.getElementById('private-tab')"),'reload React');
       await evaluate("window.ds = (await import('/src/web-peer/services/chat.js')).chatClient; true");
       await waitFor(() => evaluate('!!ds.getState().currentPeer && ds.getState().relayReady'),'restore registration');
     }};

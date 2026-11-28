@@ -45,190 +45,69 @@ export default function App() {
   )).map(message => ({ ...message, status: message.deliveries?.[selectedPeerId]?.status,
     error: message.deliveries?.[selectedPeerId]?.error,
     deliveryMode: message.deliveries?.[selectedPeerId]?.deliveryMode || message.deliveryMode }));
-  return (
-    <main>
-      <p className="label">DS01 · DIRECT / RELAY</p>
-      <h1>Chat P2P bằng JavaScript</h1>
-      <p>Trạng thái: {connectionStatus}</p>
-      <p>Relay: {state.relayReady ? 'Sẵn sàng' : 'Chưa sẵn sàng'}</p>
-      {state.error && <p role="alert">{state.error} <button type="button" onClick={chatClient.clearError}>Đóng</button></p>}
+  const [activeTab, setActiveTab] = useState('private');
+  const [search, setSearch] = useState('');
+  const contacts = [...new Set([
+    ...onlinePeers.filter(p => p.peerId !== currentPeer?.peerId).map(p => p.peerId),
+    ...state.messages.filter(m => m.type === 'CHAT_MESSAGE' && currentPeer).map(m => m.senderId === currentPeer.peerId ? m.receiverId : m.senderId)
+  ])].filter(id => `${id} ${onlinePeers.find(p => p.peerId === id)?.displayName || ''}`.toLowerCase().includes(search.toLowerCase()));
+  const selectedName = onlinePeers.find(p => p.peerId === selectedPeerId)?.displayName || selectedPeerId;
+  return <main className="messenger">
+    <header className="app-header">
+      <div className="brand"><span className="brand-icon">↗</span><div><h1>DS01 Messenger</h1><small>Kết nối và trò chuyện cùng nhau</small></div></div>
+      <div className="account"><span className={`status-dot ${connectionStatus.startsWith('Đã kết nối') ? 'online' : ''}`} />{currentPeer ? `${currentPeer.displayName} · ${currentPeer.peerId}` : 'Chưa tham gia'}
+        <details><summary>Trạng thái kết nối</summary><p>{connectionStatus}</p><p>Relay: {state.relayReady ? 'Sẵn sàng' : 'Chưa sẵn sàng'}</p></details>
+      </div>
+    </header>
+    <div className="registration">
+      {!currentPeer && <form onSubmit={e => { e.preventDefault(); handleRegister(); }}>
+        <label>Peer ID<input value={peerId} onChange={e => setPeerId(e.target.value)} placeholder="Ví dụ: peer-a" /></label>
+        <label>Tên hiển thị<input value={displayName} onChange={e => setDisplayName(e.target.value)} placeholder="Ví dụ: An" /></label>
+        <button className="primary" disabled={!connectionStatus.startsWith('Đã kết nối') || !peerId.trim() || !displayName.trim()}>Tham gia mạng</button>
+      </form>}
+      {registrationStatus && <p role="status">{registrationStatus}</p>}
+      {state.error && <p role="alert">{state.error} <button onClick={chatClient.clearError}>Đóng</button></p>}
       {sendFeedback.global && <p role="alert">{sendFeedback.global}</p>}
-      {registrationStatus && <p>{registrationStatus}</p>}
-      {currentPeer && (
-        <p>
-          Bạn: {currentPeer.displayName} ({currentPeer.peerId})
-        </p>
-      )}
-      <p>
-        <label>
-          Peer ID:
-          <input
-            type="text"
-            value={peerId}
-            onChange={(event) => setPeerId(event.target.value)}
-            placeholder="Ví dụ: peer-a"
-          />
-        </label>
-      </p>
-
-      <p>
-        <label>
-          Tên hiển thị:
-          <input
-            type="text"
-            value={displayName}
-            onChange={(event) => setDisplayName(event.target.value)}
-            placeholder="Ví dụ: An"
-          />
-        </label>
-      </p>
-      <button
-        type="button"
-        onClick={handleRegister}
-        disabled={
-          !connectionStatus.startsWith('Đã kết nối') || !!currentPeer ||
-          !peerId.trim() ||
-          !displayName.trim()
-        }
-      >
-        Tham gia mạng
-      </button>
-
-      <h2>Peer đang online ({onlinePeers.length})</h2>
-
-      {onlinePeers.length === 0 && (
-        <p>Chưa có peer nào trong danh sách.</p>
-      )}
-
-      <ul>
-        {onlinePeers.map((peer) => (
-          <li key={peer.peerId}>
-            {peer.displayName} ({peer.peerId}) — {peer.status}
-
-            {currentPeer && peer.peerId !== currentPeer.peerId && (
-              <button
-                type="button"
-                onClick={() => setSelectedPeerId(peer.peerId)}
-              >
-                Chọn chat
-              </button>
-            )}
-          </li>
-        ))}
-      </ul>
-
-      {currentPeer && <div>
-        <h2>Lịch sử cá nhân</h2>
-        {[...new Set(state.messages.filter(message => message.type === 'CHAT_MESSAGE').map(message => message.senderId === currentPeer.peerId ? message.receiverId : message.senderId))].map(id =>
-          <button type="button" key={id} onClick={() => setSelectedPeerId(id)}>{id}{onlinePeers.some(peer => peer.peerId === id) ? '' : ' (OFFLINE)'}</button>
-        )}
-      </div>}
-
-      {selectedPeerId && (
-        <section>
-          <p>Peer muốn chat: {selectedPeerId}</p>
-
-          <p>
-            Trạng thái WebRTC:{' '}
-            {webrtcStates[selectedPeerId]?.state || 'Chưa kết nối'}
-          </p>
-
-          <button
-            type="button"
-            onClick={handleConnectWebRTC}
-            disabled={
-              !currentPeer ||
-              !onlinePeers.some(peer => peer.peerId === selectedPeerId) ||
-              !connectionStatus.startsWith('Đã kết nối') ||
-              webrtcStates[selectedPeerId]?.state === 'CONNECTING' ||
-              webrtcStates[selectedPeerId]?.state === 'DIRECT_READY'
-            }
-          >
-            Kết nối WebRTC
-          </button>
-
-          {webrtcErrors[selectedPeerId] && (
-            <p role="alert">{webrtcErrors[selectedPeerId]}</p>
-          )}
-
-          <h3>Cuộc trò chuyện</h3>
-
-          {conversationMessages.length === 0 && (
-            <p>Chưa có tin nhắn.</p>
-          )}
-
-          <ul>
-            {conversationMessages.map((message) => (
-              <li
-                key={JSON.stringify([
-                  message.senderId,
-                  message.messageId,
-                ])}
-              >
-                <strong>
-                  {message.senderId === currentPeer?.peerId
-                    ? 'Bạn'
-                    : message.senderId}
-                </strong>
-                : {message.content}
-                <small> [{message.deliveryMode}]</small>
-                {message.senderId === currentPeer?.peerId && (
-                  <small>
-                    {' — '}
-                    {MESSAGE_STATUS_LABELS[message.status] ||
-                      'Đang chờ xác nhận'}
-
-                    {message.status === 'FAILED' && message.error && (
-                      <span> ({message.error})</span>
-                    )}
-                  </small>
-                )}
-              </li>
-            ))}
-          </ul>
-
-          <form onSubmit={handleSendMessage}>
-            <p>
-              <label>
-                Tin nhắn:
-                <input
-                  type="text"
-                  value={drafts[selectedPeerId] || ''}
-                  onChange={(event) => {
-                    const content = event.target.value;
-
-                    setDrafts((previous) => ({
-                      ...previous,
-                      [selectedPeerId]: content,
-                    }));
-                  }}
-                  disabled={
-                    !ready
-                  }
-                  placeholder="Nhập tin nhắn..."
-                  maxLength={8000}
-                />
-              </label>
-            </p>
-
-            <button
-              type="submit"
-              disabled={
-                !currentPeer ||
-                !ready ||
-                !(drafts[selectedPeerId] || '').trim()
-              }
-            >
-              Gửi tin
-            </button>
-          </form>
-
-          {sendFeedback[selectedPeerId] && (
-            <p role="status">{sendFeedback[selectedPeerId]}</p>
-          )}
+    </div>
+    <nav className="chat-tabs" role="tablist" aria-label="Loại trò chuyện">
+      <button id="private-tab" role="tab" aria-selected={activeTab === 'private'} aria-controls="private-panel" onClick={() => setActiveTab('private')}>◉ Trò chuyện riêng</button>
+      <button id="group-tab" role="tab" aria-selected={activeTab === 'group'} aria-controls="group-panel" onClick={() => setActiveTab('group')}>♧ Trò chuyện nhóm</button>
+    </nav>
+    <div id="private-panel" role="tabpanel" aria-labelledby="private-tab" hidden={activeTab !== 'private'}>
+      <div className="private-layout">
+        <aside className="contacts"><h2>Đoạn chat</h2><p className="muted">Bạn bè và các cuộc trò chuyện</p>
+          <input className="search" aria-label="Tìm người trò chuyện" placeholder="Tìm tên hoặc Peer ID" value={search} onChange={e => setSearch(e.target.value)} />
+          <ul>{contacts.map(id => { const person = onlinePeers.find(p => p.peerId === id);
+            const last = state.messages.filter(m => m.type === 'CHAT_MESSAGE' && ((m.senderId === id && m.receiverId === currentPeer?.peerId) || (m.receiverId === id && m.senderId === currentPeer?.peerId))).at(-1);
+            return <li key={id} className={selectedPeerId === id ? 'contact selected' : 'contact'}>
+              <span className="avatar">{(person?.displayName || id).slice(0, 1).toUpperCase()}<i className={`status-dot ${person ? 'online' : ''}`} /></span>
+              <div className="contact-info"><strong>{person?.displayName || id}</strong><small>{person ? 'Đang hoạt động' : 'Ngoại tuyến'} · {id}</small><p>{last?.content || 'Bắt đầu cuộc trò chuyện'}</p></div>
+              <button aria-label={`Chọn chat với ${id}`} onClick={() => setSelectedPeerId(id)}>Chọn chat</button>
+            </li>;
+          })}</ul>
+          {!contacts.length && <p className="empty-note">{currentPeer ? 'Chưa có cuộc trò chuyện. Mở tab khác để thêm một người bạn.' : 'Tham gia mạng để bắt đầu trò chuyện.'}</p>}
+        </aside>
+        <section className="private-conversation">
+          {!selectedPeerId ? <div className="empty-state"><span className="empty-icon">☏</span><h2>Tin nhắn của bạn</h2><p>Chọn một người ở bên trái để bắt đầu cuộc trò chuyện.</p></div> : <>
+            <header className="conversation-header"><span className="avatar">{selectedName.slice(0, 1).toUpperCase()}</span><div><h2>{selectedName}</h2><small>{onlinePeers.some(p => p.peerId === selectedPeerId) ? 'Đang hoạt động' : 'Ngoại tuyến'} · {webrtcStates[selectedPeerId]?.state || 'Chưa kết nối'}</small></div>
+              <button onClick={handleConnectWebRTC} disabled={!currentPeer || !onlinePeers.some(p => p.peerId === selectedPeerId) || !connectionStatus.startsWith('Đã kết nối') || ['CONNECTING', 'DIRECT_READY'].includes(webrtcStates[selectedPeerId]?.state)}>Kết nối WebRTC</button>
+            </header>
+            {webrtcErrors[selectedPeerId] && <p role="alert">{webrtcErrors[selectedPeerId]}</p>}
+            <div className="private-messages" aria-live="polite">
+              {!conversationMessages.length && <div className="empty-state"><h3>Gửi lời chào đến {selectedName}</h3><p>Kết nối rồi gửi tin nhắn đầu tiên.</p></div>}
+              {conversationMessages.map(m => <article className={`bubble ${m.senderId === currentPeer?.peerId ? 'mine' : ''}`} key={`${m.senderId}:${m.messageId}`}>
+                <small>{m.senderId === currentPeer?.peerId ? 'Bạn' : selectedName}</small><p>{m.content}</p>
+                <small>{m.deliveryMode}{m.senderId === currentPeer?.peerId && ` · ${MESSAGE_STATUS_LABELS[m.status] || 'Đang chờ xác nhận'}`}{m.error && ` (${m.error})`}</small>
+              </article>)}
+            </div>
+            <form className="composer" onSubmit={handleSendMessage}><input aria-label="Tin nhắn riêng" value={drafts[selectedPeerId] || ''} onChange={e => setDrafts(old => ({ ...old, [selectedPeerId]: e.target.value }))} disabled={!ready} placeholder="Nhập tin nhắn..." maxLength={8000} /><button className="primary" disabled={!currentPeer || !ready || !(drafts[selectedPeerId] || '').trim()}>Gửi tin</button></form>
+            {sendFeedback[selectedPeerId] && <p role="status">{sendFeedback[selectedPeerId]}</p>}
+          </>}
         </section>
-      )}
-      {currentPeer && <GroupChatPanel key={currentPeer.peerId} currentPeer={currentPeer} onlinePeers={onlinePeers} />}
-    </main>
-  );
+      </div>
+    </div>
+    <div id="group-panel" role="tabpanel" aria-labelledby="group-tab" hidden={activeTab !== 'group'}>
+      {currentPeer ? <GroupChatPanel key={currentPeer.peerId} currentPeer={currentPeer} onlinePeers={onlinePeers} /> : <div className="empty-state"><span className="empty-icon">♧</span><h2>Trò chuyện nhóm</h2><p>Tham gia mạng để tạo nhóm và trò chuyện với mọi người.</p></div>}
+    </div>
+  </main>;
 }
